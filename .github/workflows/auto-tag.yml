@@ -1,0 +1,74 @@
+name: auto-tag
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: auto-tag-main
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit is from merged PR
+        id: pr_check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = context.sha;
+            const { data: pulls } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: sha,
+            });
+
+            const mergedPr = pulls.find((pr) => pr.merged_at);
+            if (!mergedPr) {
+              core.notice(`Skip auto-tag: commit ${sha} is not associated with a merged PR.`);
+              core.setOutput("should_tag", "false");
+              return;
+            }
+
+            core.info(`Auto-tag enabled for merged PR #${mergedPr.number}.`);
+            core.setOutput("should_tag", "true");
+
+      - name: Create and push next release tag
+        if: steps.pr_check.outputs.should_tag == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --tags origin
+
+          existing_on_sha="$(git tag --points-at "$GITHUB_SHA" | grep -E '^[0-9]{4}\.(0[1-9]|1[0-2])\.[0-9]+$' | head -n1 || true)"
+          if [[ -n "$existing_on_sha" ]]; then
+            echo "Release tag already exists on this commit: $existing_on_sha"
+            exit 0
+          fi
+
+          prefix="$(date -u +%Y.%m)"
+          next=1
+          while IFS= read -r tag; do
+            suffix="${tag#${prefix}.}"
+            if [[ "$suffix" =~ ^[0-9]+$ ]] && (( suffix >= next )); then
+              next=$((suffix + 1))
+            fi
+          done < <(git tag -l "${prefix}.*")
+
+          tag="${prefix}.${next}"
+          git tag "$tag" "$GITHUB_SHA"
+          git push origin "$tag"
+          echo "Created tag: $tag"

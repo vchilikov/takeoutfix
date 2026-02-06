@@ -1,99 +1,104 @@
 # TakeoutFix
 
-TakeoutFix helps you restore Google Photos Takeout metadata and write it back into your photos and videos.
+TakeoutFix restores Google Photos Takeout metadata and writes it back into photo/video files.
 
-It handles common Takeout export issues:
+## What it does
 
-- reads date, GPS, and description from metadata `.json` sidecars;
-- supports `.supplemental-metadata.json` sidecars (including truncated variants);
-- fixes incorrect media file extensions;
-- does not write `OffsetTime*` (timezone offset) in the current version;
-- supports repeated runs (`fix` is idempotent);
-- removes only matched `.json` files in `clean-json` mode.
+- Matches media files with Google Takeout JSON sidecars recursively under a root folder.
+- Supports classic `*.json` and supplemental `*.supplemental-metadata.json` sidecars, including truncated variants.
+- Handles common naming variants (`-edited`, `(1)`, random suffixes like `-abc12`, long-name truncation).
+- Supports cross-folder matching when media and JSON live in different subfolders.
+- Fixes media file extension using `exiftool -p '.$FileTypeExtension'`.
+- Applies metadata via ExifTool (`Title`, `Description`, `AllDates`, GPS tags).
+- Writes to `<media>.xmp` sidecar when the media extension is not directly writable.
+- Keeps repeated runs safe (`fix` can be run multiple times).
+- Removes only successfully matched JSON files in `clean-json`.
 
 ## Requirements
 
-- [Go](https://go.dev/) 1.25+
+- [Go](https://go.dev/) `1.25+`
 - [ExifTool](https://exiftool.org) available in `PATH`
 
-Quick check:
+Check:
 
 ```bash
-exiftool -ver
 go version
+exiftool -ver
 ```
 
-## Quick Start
-
-1. Build the binary:
+## Build
 
 ```bash
-go build -o takeoutfix
+go build -o takeoutfix .
 ```
 
-2. Run metadata fix:
+## Usage
 
 ```bash
-takeoutfix fix ~/Downloads/Takeout/Google\ Photos
+takeoutfix <operation> <path>
 ```
 
-3. Optionally remove matched JSON files:
+Supported operations:
 
 ```bash
-takeoutfix clean-json ~/Downloads/Takeout/Google\ Photos
+takeoutfix fix /path/to/Takeout/Google\ Photos
+takeoutfix clean-json /path/to/Takeout/Google\ Photos
 ```
 
-If your path contains spaces, use `\` escaping or quotes.
+If the path contains spaces, use quotes or escaping.
 
-## Expected Input Structure
-
-TakeoutFix expects a standard Google Takeout layout.  
-Matching runs recursively inside the provided root path, including cases where media and sidecars are in different subfolders.
-
-```text
-Takeout/
-  Google Photos/
-    Album 1/
-      IMG_0001.jpg
-      IMG_0001.jpg.json
-      IMG_0002.mp4
-      IMG_0002.mp4.supplemental-metadata.json
-```
-
-## Commands
+## Command behavior
 
 ### `fix`
 
-Matches media files with JSON sidecars, fixes file extensions, and writes metadata with ExifTool.
+1. Scans all nested folders under the given root.
+2. Matches each media file to the best JSON candidate.
+3. Prints warnings for missing/unused/ambiguous matches.
+4. Fixes extension if needed.
+5. Applies metadata with ExifTool.
+
+Example:
 
 ```bash
-takeoutfix fix <path-to-google-photos-folder>
-```
-
-Example with logs:
-
-```bash
-takeoutfix fix <path> | tee takeoutfix.log
+takeoutfix fix "/Users/me/Downloads/Takeout/Google Photos" | tee takeoutfix.log
 ```
 
 ### `clean-json`
 
-Removes only `.json` files that were successfully matched to media files.  
-Unused/orphaned and ambiguous `.json` files are kept and logged.
+- Runs the same scan/matching logic as `fix`.
+- Removes only JSON files that were uniquely matched to media.
+- Keeps orphaned and ambiguous JSON files untouched.
+
+Example:
 
 ```bash
-takeoutfix clean-json <path-to-google-photos-folder>
+takeoutfix clean-json "/Users/me/Downloads/Takeout/Google Photos"
 ```
 
-## Behavior and Limitations
+## Matching notes
 
-- `OffsetTime*` tags are intentionally not written in the current version.
-- For formats not directly writable by ExifTool, metadata is written into an `.xmp` sidecar.
-- Existing `.xmp` sidecars are ignored as input media during matching.
-- If multiple media files compete for the same single global JSON candidate, the match is marked as ambiguous.
-- The project is designed for Google Photos Takeout structure and naming patterns.
+- Matching is case-insensitive.
+- `.xmp` files are ignored as input media.
+- If a media file has multiple JSON candidates, it is marked ambiguous and skipped.
+- If one global JSON candidate could match multiple media files, it is also treated as ambiguous.
+- For `.mp4`, matcher also tries related stems with `.jpg`, `.jpeg`, `.heic`.
 
-## Local Verification
+## Metadata notes and limitations
+
+- `OffsetTime*` tags are intentionally not written.
+- Unsupported writable formats are handled through `.xmp` sidecars.
+- This tool is tailored for Google Photos Takeout naming/layout patterns.
+
+## Troubleshooting
+
+- `exiftool: command not found`
+  - Install ExifTool and ensure it is in `PATH`.
+- Many `unused json kept` warnings
+  - Usually means unmatched/orphan sidecars or ambiguous matches in your export.
+- Unexpected rename
+  - TakeoutFix trusts ExifTool-detected type and may rename the extension when needed.
+
+## Local verification
 
 ```bash
 go test ./...
@@ -105,15 +110,17 @@ go build ./...
 
 Releases are automated with GitHub Actions + GoReleaser.
 
-To publish a new version:
+After each merge into `main`, CI creates the next tag in `YYYY.MM.N` format and triggers release publishing automatically.
+
+Manual fallback:
 
 ```bash
 git tag 2026.02.1
-git push --tags
+git push origin 2026.02.1
 ```
 
-Release tags must match `YYYY.MM.N` and point to the current `main` HEAD.
+Tag format must be `YYYY.MM.N` and point to current `main` HEAD.
 
-After pushing a tag, GitHub creates a release with binaries for Linux/macOS/Windows (`amd64` + `arm64`) and a `checksums.txt` file.
+Artifacts include Linux/macOS/Windows binaries (`amd64` + `arm64`) and `checksums.txt`.
 
 Download releases: [https://github.com/vchilikov/takeout-fix/releases](https://github.com/vchilikov/takeout-fix/releases)
