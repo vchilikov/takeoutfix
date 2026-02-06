@@ -1,52 +1,54 @@
 # TakeoutFix
 
-TakeoutFix помогает аккуратно восстановить метаданные Google Photos Takeout и записать их обратно в фото/видео.
+TakeoutFix helps you restore Google Photos Takeout metadata and write it back into your photos and videos.
 
-Проект решает типовые проблемы экспорта:
+It handles common Takeout export issues:
 
-- берет дату, GPS и описание из `.json` рядом с медиа;
-- исправляет неверные расширения файлов;
-- добавляет `OffsetTime*` (timezone offset), когда его можно вычислить по координатам;
-- поддерживает повторный запуск (идемпотентное поведение для `fix`);
-- удаляет только использованные `.json` в режиме `clean-json`.
+- reads date, GPS, and description from metadata `.json` sidecars;
+- supports `.supplemental-metadata.json` sidecars (including truncated variants);
+- fixes incorrect media file extensions;
+- does not write `OffsetTime*` (timezone offset) in the current version;
+- supports repeated runs (`fix` is idempotent);
+- removes only matched `.json` files in `clean-json` mode.
 
-## Что нужно перед запуском
+## Requirements
 
-- [Go](https://go.dev/) 1.22+
-- [ExifTool](https://exiftool.org) в `PATH`
+- [Go](https://go.dev/) 1.25+
+- [ExifTool](https://exiftool.org) available in `PATH`
 
-Проверка:
+Quick check:
 
 ```bash
 exiftool -ver
 go version
 ```
 
-## Быстрый старт
+## Quick Start
 
-1. Собери бинарник:
+1. Build the binary:
 
 ```bash
 go build -o takeoutfix
 ```
 
-2. Запусти исправление метаданных:
+2. Run metadata fix:
 
 ```bash
 takeoutfix fix ~/Downloads/Takeout/Google\ Photos
 ```
 
-3. Опционально удали использованные JSON:
+3. Optionally remove matched JSON files:
 
 ```bash
 takeoutfix clean-json ~/Downloads/Takeout/Google\ Photos
 ```
 
-Если путь содержит пробелы, используй `\` или кавычки.
+If your path contains spaces, use `\` escaping or quotes.
 
-## Как устроены входные данные
+## Expected Input Structure
 
-Ожидается стандартная структура Takeout:
+TakeoutFix expects a standard Google Takeout layout.  
+Matching runs recursively inside the provided root path, including cases where media and sidecars are in different subfolders.
 
 ```text
 Takeout/
@@ -55,20 +57,20 @@ Takeout/
       IMG_0001.jpg
       IMG_0001.jpg.json
       IMG_0002.mp4
-      IMG_0002.mp4.json
+      IMG_0002.mp4.supplemental-metadata.json
 ```
 
-## Команды
+## Commands
 
 ### `fix`
 
-Сопоставляет медиа и JSON, исправляет расширения, пишет метаданные через ExifTool.
+Matches media files with JSON sidecars, fixes file extensions, and writes metadata with ExifTool.
 
 ```bash
 takeoutfix fix <path-to-google-photos-folder>
 ```
 
-Пример с сохранением лога:
+Example with logs:
 
 ```bash
 takeoutfix fix <path> | tee takeoutfix.log
@@ -76,20 +78,22 @@ takeoutfix fix <path> | tee takeoutfix.log
 
 ### `clean-json`
 
-Удаляет только те `.json`, которые были успешно сопоставлены с медиа.  
-Неиспользованные/осиротевшие `.json` остаются и логируются.
+Removes only `.json` files that were successfully matched to media files.  
+Unused/orphaned and ambiguous `.json` files are kept and logged.
 
 ```bash
 takeoutfix clean-json <path-to-google-photos-folder>
 ```
 
-## Поведение и ограничения
+## Behavior and Limitations
 
-- Если timezone offset нельзя вычислить (нет GPS или lookup неуспешен), обработка продолжается без `OffsetTime*`.
-- Для форматов без прямой поддержки ExifTool метаданные пишутся в `.xmp` sidecar.
-- Проект ориентирован на структуру Google Photos Takeout.
+- `OffsetTime*` tags are intentionally not written in the current version.
+- For formats not directly writable by ExifTool, metadata is written into an `.xmp` sidecar.
+- Existing `.xmp` sidecars are ignored as input media during matching.
+- If multiple media files compete for the same single global JSON candidate, the match is marked as ambiguous.
+- The project is designed for Google Photos Takeout structure and naming patterns.
 
-## Локальная проверка
+## Local Verification
 
 ```bash
 go test ./...
@@ -97,17 +101,19 @@ go vet ./...
 go build ./...
 ```
 
-## Релизы
+## Releases
 
-Релизы автоматизированы через GitHub Actions + GoReleaser.
+Releases are automated with GitHub Actions + GoReleaser.
 
-Публикация версии:
+To publish a new version:
 
 ```bash
-git tag vX.Y.Z
+git tag 2026.02.1
 git push --tags
 ```
 
-После пуша тега создается GitHub Release с бинарниками для Linux/macOS/Windows (`amd64` + `arm64`) и файлом `checksums.txt`.
+Release tags must match `YYYY.MM.N` and point to the current `main` HEAD.
 
-Скачать релизы: [https://github.com/vchilikov/takeout-fix/releases](https://github.com/vchilikov/takeout-fix/releases)
+After pushing a tag, GitHub creates a release with binaries for Linux/macOS/Windows (`amd64` + `arm64`) and a `checksums.txt` file.
+
+Download releases: [https://github.com/vchilikov/takeout-fix/releases](https://github.com/vchilikov/takeout-fix/releases)
