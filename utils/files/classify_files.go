@@ -2,8 +2,6 @@ package files
 
 import (
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 func classifyFiles(entries []os.DirEntry) (map[string]struct{}, map[string]struct{}) {
@@ -15,9 +13,9 @@ func classifyFiles(entries []os.DirEntry) (map[string]struct{}, map[string]struc
 			continue
 		}
 
-		if strings.EqualFold(filepath.Ext(entry.Name()), ".json") {
+		if isJSONFile(entry.Name()) {
 			jsonFiles[entry.Name()] = struct{}{}
-		} else {
+		} else if isMediaCandidate(entry.Name()) {
 			mediaFiles[entry.Name()] = struct{}{}
 		}
 	}

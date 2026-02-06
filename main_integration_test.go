@@ -46,22 +46,16 @@ fi
 
 found_separator=0
 has_offset=0
-has_offset_original=0
-has_offset_digitized=0
 for arg in "$@"; do
   if [ "$arg" = "--" ]; then
     found_separator=1
   fi
   case "$arg" in
-    -OffsetTime=*) has_offset=1 ;;
-    -OffsetTimeOriginal=*) has_offset_original=1 ;;
-    -OffsetTimeDigitized=*) has_offset_digitized=1 ;;
+    -OffsetTime*) has_offset=1 ;;
   esac
 done
 [ "$found_separator" -eq 1 ] || exit 12
-[ "$has_offset" -eq 1 ] || exit 13
-[ "$has_offset_original" -eq 1 ] || exit 14
-[ "$has_offset_digitized" -eq 1 ] || exit 15
+[ "$has_offset" -eq 0 ] || exit 13
 printf 'metadata\n' >> "$MARKER_FILE"
 exit 0
 `

@@ -108,7 +108,9 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 			return nil
 		}
 
-		mediaByDir[dir] = append(mediaByDir[dir], base)
+		if isMediaCandidate(base) {
+			mediaByDir[dir] = append(mediaByDir[dir], base)
+		}
 		return nil
 	})
 	if err != nil {
@@ -154,18 +156,34 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	}
 
 	sort.Strings(unresolvedMedia)
+	globalCandidatesByMedia := make(map[string][]string, len(unresolvedMedia))
+	globalCandidateUsage := make(map[string]int)
+
 	for _, mediaRel := range unresolvedMedia {
 		keys := mediaLookupKeys(filepath.Base(mediaRel))
 		candidates := collectGlobalCandidates(keys, globalIndex, usedJSON)
+		globalCandidatesByMedia[mediaRel] = candidates
 
+		if len(candidates) == 1 {
+			globalCandidateUsage[candidates[0]]++
+		}
+	}
+
+	for _, mediaRel := range unresolvedMedia {
+		candidates := globalCandidatesByMedia[mediaRel]
 		switch len(candidates) {
 		case 0:
 			result.MissingJSON = append(result.MissingJSON, mediaRel)
 		case 1:
-			result.Pairs[mediaRel] = candidates[0]
-			usedJSON[candidates[0]] = struct{}{}
+			candidate := candidates[0]
+			if globalCandidateUsage[candidate] > 1 {
+				result.AmbiguousJSON[mediaRel] = candidates
+				continue
+			}
+
+			result.Pairs[mediaRel] = candidate
+			usedJSON[candidate] = struct{}{}
 		default:
-			sort.Strings(candidates)
 			result.AmbiguousJSON[mediaRel] = candidates
 		}
 	}
@@ -265,4 +283,12 @@ func sortedDirs(m map[string][]string) []string {
 
 func isJSONFile(name string) bool {
 	return strings.EqualFold(filepath.Ext(name), ".json")
+}
+
+func isXMPFile(name string) bool {
+	return strings.EqualFold(filepath.Ext(name), ".xmp")
+}
+
+func isMediaCandidate(name string) bool {
+	return !isJSONFile(name) && !isXMPFile(name)
 }

@@ -144,3 +144,80 @@ func TestScanTakeout_AmbiguousGlobalMatch(t *testing.T) {
 		t.Fatalf("unused mismatch: want %v, got %v", wantUnused, result.UnusedJSON)
 	}
 }
+
+func TestScanTakeout_IgnoresXMPAsInputMedia(t *testing.T) {
+	root := t.TempDir()
+	jsonRel := "IMG_0001.webp.json"
+
+	if err := os.WriteFile(filepath.Join(root, "IMG_0001.webp.xmp"), []byte("xmp"), 0o600); err != nil {
+		t.Fatalf("write xmp: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, jsonRel), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+
+	result, err := ScanTakeout(root)
+	if err != nil {
+		t.Fatalf("ScanTakeout error: %v", err)
+	}
+
+	if len(result.Pairs) != 0 {
+		t.Fatalf("expected no pairs, got %v", result.Pairs)
+	}
+	if len(result.MissingJSON) != 0 {
+		t.Fatalf("expected no missing json, got %v", result.MissingJSON)
+	}
+	if len(result.AmbiguousJSON) != 0 {
+		t.Fatalf("expected no ambiguous json, got %v", result.AmbiguousJSON)
+	}
+	if !reflect.DeepEqual(result.UnusedJSON, []string{jsonRel}) {
+		t.Fatalf("unused mismatch: want %v, got %v", []string{jsonRel}, result.UnusedJSON)
+	}
+}
+
+func TestScanTakeout_DuplicateMediaSingleGlobalJSONIsAmbiguous(t *testing.T) {
+	root := t.TempDir()
+	mediaA := filepath.Join("A", "IMG_0001.jpg")
+	mediaB := filepath.Join("B", "IMG_0001.jpg")
+	jsonRel := filepath.Join("JSON", "IMG_0001.jpg.supplemental-metadata.json")
+
+	for _, dir := range []string{"A", "B", "JSON"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(root, mediaA), []byte("media"), 0o600); err != nil {
+		t.Fatalf("write media A: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, mediaB), []byte("media"), 0o600); err != nil {
+		t.Fatalf("write media B: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, jsonRel), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+
+	result, err := ScanTakeout(root)
+	if err != nil {
+		t.Fatalf("ScanTakeout error: %v", err)
+	}
+
+	if len(result.Pairs) != 0 {
+		t.Fatalf("expected no pairs, got %v", result.Pairs)
+	}
+
+	wantAmbiguous := map[string][]string{
+		mediaA: []string{jsonRel},
+		mediaB: []string{jsonRel},
+	}
+	if !reflect.DeepEqual(result.AmbiguousJSON, wantAmbiguous) {
+		t.Fatalf("ambiguous mismatch: want %v, got %v", wantAmbiguous, result.AmbiguousJSON)
+	}
+
+	if len(result.MissingJSON) != 0 {
+		t.Fatalf("expected no missing json, got %v", result.MissingJSON)
+	}
+	if !reflect.DeepEqual(result.UnusedJSON, []string{jsonRel}) {
+		t.Fatalf("unused mismatch: want %v, got %v", []string{jsonRel}, result.UnusedJSON)
+	}
+}

@@ -15,6 +15,9 @@ func TestClassifyFiles_CaseInsensitiveJSON(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("x"), 0o600); err != nil {
 		t.Fatalf("write media: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "photo.jpg.xmp"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
 	if err := os.Mkdir(filepath.Join(dir, "nested"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -34,5 +37,8 @@ func TestClassifyFiles_CaseInsensitiveJSON(t *testing.T) {
 	}
 	if _, ok := mediaFiles["meta.JSON"]; ok {
 		t.Fatalf("meta.JSON must not be classified as media")
+	}
+	if _, ok := mediaFiles["photo.jpg.xmp"]; ok {
+		t.Fatalf("photo.jpg.xmp must not be classified as media")
 	}
 }

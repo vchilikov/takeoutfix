@@ -7,7 +7,7 @@ It handles common Takeout export issues:
 - reads date, GPS, and description from metadata `.json` sidecars;
 - supports `.supplemental-metadata.json` sidecars (including truncated variants);
 - fixes incorrect media file extensions;
-- adds `OffsetTime*` (timezone offset) when it can be computed from GPS;
+- does not write `OffsetTime*` (timezone offset) in the current version;
 - supports repeated runs (`fix` is idempotent);
 - removes only matched `.json` files in `clean-json` mode.
 
@@ -87,8 +87,10 @@ takeoutfix clean-json <path-to-google-photos-folder>
 
 ## Behavior and Limitations
 
-- If timezone offset cannot be computed (missing GPS or failed lookup), processing continues without `OffsetTime*`.
+- `OffsetTime*` tags are intentionally not written in the current version.
 - For formats not directly writable by ExifTool, metadata is written into an `.xmp` sidecar.
+- Existing `.xmp` sidecars are ignored as input media during matching.
+- If multiple media files compete for the same single global JSON candidate, the match is marked as ambiguous.
 - The project is designed for Google Photos Takeout structure and naming patterns.
 
 ## Local Verification
