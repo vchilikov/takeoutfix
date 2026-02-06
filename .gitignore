@@ -1,0 +1,12 @@
+# IDE
+/.idea
+
+# macOS
+.DS_Store
+
+# local binaries
+/takeoutfix
+
+# release/build artifacts
+/dist
+/coverage.out
