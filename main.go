@@ -1,124 +1,63 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
-	"github.com/vchilikov/takeout-fix/utils/extensions"
-	"github.com/vchilikov/takeout-fix/utils/files"
-	"github.com/vchilikov/takeout-fix/utils/metadata"
-	"log"
+	"io"
 	"os"
-	"path/filepath"
-	"sort"
-)
+	"strings"
 
-const (
-	OperationFix       = "fix"
-	OperationCleanJson = "clean-json"
+	"github.com/vchilikov/takeout-fix/internal/wizard"
 )
-
-func init() {
-	log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime))
-}
 
 func main() {
-	operation, path := getArgs()
-	switch operation {
-	case OperationFix:
-		fixTakeout(path)
-	case OperationCleanJson:
-		cleanTakeoutJson(path)
-	}
-}
-
-func getArgs() (string, string) {
-	help := `Usage: takeoutfix <operation> <path>
-
-Supported operations:
-$ takeoutfix fix /path/to/takeout
-$ takeoutfix clean-json /path/to/takeout
-
-`
-
-	if len(os.Args) < 3 {
-		log.Fatal(help)
-	}
-
-	if os.Args[1] != OperationFix && os.Args[1] != OperationCleanJson {
-		log.Fatalf("Operation %s is not supported.\n\n%s", os.Args[1], help)
-	}
-
-	return os.Args[1], os.Args[2]
-}
-
-func fixTakeout(rootPath string) {
-	scanResult, err := files.ScanTakeout(rootPath)
+	workDir, err := resolveWorkDir(os.Args[1:], os.Getwd, os.Stat)
 	if err != nil {
-		fmt.Printf("🚨 could not scan takeout %s: %s\n", rootPath, err)
-		return
+		fmt.Fprintf(os.Stderr, "invalid arguments: %v\n", err)
+		fmt.Fprintln(os.Stderr, "usage: takeoutfix [--workdir /path/to/folder]")
+		os.Exit(wizard.ExitRuntimeFail)
 	}
 
-	printScanWarnings(rootPath, scanResult)
-
-	mediaFiles := make([]string, 0, len(scanResult.Pairs))
-	for mediaFile := range scanResult.Pairs {
-		mediaFiles = append(mediaFiles, mediaFile)
-	}
-	sort.Strings(mediaFiles)
-
-	for _, mediaFile := range mediaFiles {
-		jsonFile := scanResult.Pairs[mediaFile]
-		mediaPath := filepath.Join(rootPath, mediaFile)
-		jsonPath := filepath.Join(rootPath, jsonFile)
-
-		newMediaPath, err := extensions.Fix(mediaPath)
-		if err != nil {
-			fmt.Printf("🚨 extension for file %s could not be fixed: %s\n", mediaPath, err)
-			continue
-		}
-
-		err = metadata.Apply(newMediaPath, jsonPath)
-		if err != nil {
-			fmt.Printf("🚨 metadata for file %s could not be applied: %s\n", newMediaPath, err)
-			continue
-		}
-	}
+	code := wizard.Run(workDir, os.Stdin, os.Stdout)
+	os.Exit(code)
 }
 
-func cleanTakeoutJson(rootPath string) {
-	scanResult, err := files.ScanTakeout(rootPath)
+func resolveWorkDir(
+	args []string,
+	getwd func() (string, error),
+	statFn func(string) (os.FileInfo, error),
+) (string, error) {
+	fs := flag.NewFlagSet("takeoutfix", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	workdir := fs.String("workdir", "", "working directory")
+	if err := fs.Parse(args); err != nil {
+		return "", err
+	}
+	if fs.NArg() > 0 {
+		return "", fmt.Errorf("unexpected positional arguments: %v", fs.Args())
+	}
+
+	resolved := strings.TrimSpace(*workdir)
+	if resolved == "" {
+		cwd, err := getwd()
+		if err != nil {
+			return "", fmt.Errorf("get current working directory: %w", err)
+		}
+		resolved = cwd
+	}
+
+	info, err := statFn(resolved)
 	if err != nil {
-		fmt.Printf("🚨 could not scan takeout %s: %s\n", rootPath, err)
-		return
-	}
-
-	printScanWarnings(rootPath, scanResult)
-
-	jsonToRemove := make(map[string]struct{})
-	for _, jsonFile := range scanResult.Pairs {
-		jsonToRemove[jsonFile] = struct{}{}
-	}
-
-	for jsonFile := range jsonToRemove {
-		err := os.Remove(filepath.Join(rootPath, jsonFile))
-		if err != nil {
-			fmt.Printf("🚨 could not remove %s: %s\n", filepath.Join(rootPath, jsonFile), err)
+		if errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("workdir %q does not exist", resolved)
 		}
+		return "", fmt.Errorf("stat workdir %q: %w", resolved, err)
 	}
-}
+	if !info.IsDir() {
+		return "", fmt.Errorf("workdir %q is not a directory", resolved)
+	}
 
-func printScanWarnings(rootPath string, scanResult files.MediaScanResult) {
-	for _, mediaFile := range scanResult.MissingJSON {
-		fmt.Printf("⚠️ no matching json for %s\n", filepath.Join(rootPath, mediaFile))
-	}
-	for _, jsonFile := range scanResult.UnusedJSON {
-		fmt.Printf("⚠️ unused json kept: %s\n", filepath.Join(rootPath, jsonFile))
-	}
-	ambiguousMedia := make([]string, 0, len(scanResult.AmbiguousJSON))
-	for mediaFile := range scanResult.AmbiguousJSON {
-		ambiguousMedia = append(ambiguousMedia, mediaFile)
-	}
-	sort.Strings(ambiguousMedia)
-	for _, mediaFile := range ambiguousMedia {
-		fmt.Printf("⚠️ ambiguous json candidates for %s: %v\n", filepath.Join(rootPath, mediaFile), scanResult.AmbiguousJSON[mediaFile])
-	}
+	return resolved, nil
 }

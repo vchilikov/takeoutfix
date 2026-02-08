@@ -1,126 +1,96 @@
 # TakeoutFix
 
-TakeoutFix restores Google Photos Takeout metadata and writes it back into photo/video files.
+TakeoutFix is an interactive tool for regular users who want to move out of Google Photos without losing metadata.
+It prepares Google Takeout archives and restores photo/video metadata such as capture date, location, and description.
 
-## What it does
+## Quick Start (3 Steps)
 
-- Matches media files with Google Takeout JSON sidecars recursively under a root folder.
-- Supports classic `*.json` and supplemental `*.supplemental-metadata.json` sidecars, including truncated variants.
-- Handles common naming variants (`-edited`, `(1)`, random suffixes like `-abc12`, long-name truncation).
-- Supports cross-folder matching when media and JSON live in different subfolders.
-- Fixes media file extension using `exiftool -p '.$FileTypeExtension'`.
-- Applies metadata via ExifTool (`Title`, `Description`, `AllDates`, GPS tags).
-- Writes to `<media>.xmp` sidecar when the media extension is not directly writable.
-- Keeps repeated runs safe (`fix` can be run multiple times).
-- Removes only successfully matched JSON files in `clean-json`.
+1. Export your Google Photos archive from Google Takeout as ZIP files.
+2. Put all `*.zip` files into one local folder.
+3. Run TakeoutFix in that folder, then upload the processed output to your new storage.
 
-## Requirements
+## Run TakeoutFix
 
-- [Go](https://go.dev/) `1.25+`
-- [ExifTool](https://exiftool.org) available in `PATH`
+### Option A: Download a ready binary (recommended)
 
-Check:
+Get the latest release for your OS from [GitHub Releases](https://github.com/vchilikov/takeout-fix/releases).
 
-```bash
-go version
-exiftool -ver
-```
-
-## Build
+### Option B: Build from source
 
 ```bash
 go build -o takeoutfix .
 ```
 
-## Usage
+### Start processing
+
+macOS/Linux:
 
 ```bash
-takeoutfix <operation> <path>
+./takeoutfix
+./takeoutfix --workdir /path/to/folder
 ```
 
-Supported operations:
+Windows (PowerShell):
 
-```bash
-takeoutfix fix /path/to/Takeout/Google\ Photos
-takeoutfix clean-json /path/to/Takeout/Google\ Photos
+```powershell
+.\takeoutfix.exe
+.\takeoutfix.exe --workdir C:\path\to\folder
 ```
 
-If the path contains spaces, use quotes or escaping.
+## Minimal Requirements
 
-## Command behavior
+- Supported OS: macOS, Linux, Windows.
+- `exiftool` must be available in `PATH`.
+- If `exiftool` is missing, TakeoutFix can offer automatic installation on macOS/Linux/Windows.
+- You need enough free disk space for extraction and processing.
 
-### `fix`
+## What You Will See in the Terminal
 
-1. Scans all nested folders under the given root.
-2. Matches each media file to the best JSON candidate.
-3. Prints warnings for missing/unused/ambiguous matches.
-4. Fixes extension if needed.
-5. Applies metadata with ExifTool.
+TakeoutFix runs in a guided sequence and prints clear stages:
 
-Example:
+- `TakeoutFix interactive mode`
+- `Checking dependencies...`
+- `Scanning ZIP archives in current folder...`
+- `Validating ZIP integrity (all archives)...`
+- `Checking available disk space...`
+- `Extracting archives into: ...`
+- `Applying metadata and cleaning matched JSON...`
+- `Final summary`
 
-```bash
-takeoutfix fix "/Users/me/Downloads/Takeout/Google Photos" | tee takeoutfix.log
-```
+If any archive is corrupt, processing stops before extraction.
 
-### `clean-json`
+## Output: What to Upload
 
-- Runs the same scan/matching logic as `fix`.
-- Removes only JSON files that were uniquely matched to media.
-- Keeps orphaned and ambiguous JSON files untouched.
+After a successful run (`Status: SUCCESS`):
 
-Example:
+- Processed files are in `./takeoutfix-extracted`.
+- Upload `./takeoutfix-extracted/Takeout` to your new cloud storage.
+- Do not upload original Takeout ZIP files.
 
-```bash
-takeoutfix clean-json "/Users/me/Downloads/Takeout/Google Photos"
-```
+Technical state is saved in `./.takeoutfix/state.json` so reruns can skip unchanged archives.
 
-## Matching notes
+## Cloud Upload Guides
 
-- Matching is case-insensitive.
-- `.xmp` files are ignored as input media.
-- If a media file has multiple JSON candidates, it is marked ambiguous and skipped.
-- If one global JSON candidate could match multiple media files, it is also treated as ambiguous.
-- For `.mp4`, matcher also tries related stems with `.jpg`, `.jpeg`, `.heic`.
+Use cloud-specific guides here: [docs/clouds/README.md](docs/clouds/README.md)
 
-## Metadata notes and limitations
-
-- `OffsetTime*` tags are intentionally not written.
-- Unsupported writable formats are handled through `.xmp` sidecars.
-- This tool is tailored for Google Photos Takeout naming/layout patterns.
+Yandex Disk Russian guide: [docs/clouds/yandex-disk.ru.md](docs/clouds/yandex-disk.ru.md)
 
 ## Troubleshooting
 
-- `exiftool: command not found`
-  - Install ExifTool and ensure it is in `PATH`.
-- Many `unused json kept` warnings
-  - Usually means unmatched/orphan sidecars or ambiguous matches in your export.
-- Unexpected rename
-  - TakeoutFix trusts ExifTool-detected type and may rename the extension when needed.
+- `No ZIP archives found in current folder.`
+  - Move all Takeout ZIPs to the top level of your working folder and run again.
+- `Corrupt ZIP files found. Processing stopped.`
+  - Re-download broken archive parts from Google Takeout, then rerun.
+- `Missing dependencies: exiftool`
+  - Approve auto-install prompt or install manually, then rerun.
+- `Not enough disk space for normal mode.`
+  - Use delete mode when prompted or free up disk space.
 
-## Local verification
-
-```bash
-go test ./...
-go vet ./...
-go build ./...
-```
-
-## Releases
-
-Releases are automated with GitHub Actions + GoReleaser.
-
-After each merge into `main`, CI creates the next tag in `YYYY.MM.N` format and triggers release publishing automatically.
-
-Manual fallback:
+## Developer Appendix (Optional)
 
 ```bash
-git tag 2026.02.1
-git push origin 2026.02.1
+make check
+make check-all
 ```
 
-Tag format must be `YYYY.MM.N` and point to current `main` HEAD.
-
-Artifacts include Linux/macOS/Windows binaries (`amd64` + `arm64`) and `checksums.txt`.
-
-Download releases: [https://github.com/vchilikov/takeout-fix/releases](https://github.com/vchilikov/takeout-fix/releases)
+This appendix is optional for end users and intended for contributors.

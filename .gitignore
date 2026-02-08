@@ -10,3 +10,10 @@
 # release/build artifacts
 /dist
 /coverage.out
+
+# local example assets
+/example
+
+# runtime artifacts
+/.takeoutfix
+/takeoutfix-extracted

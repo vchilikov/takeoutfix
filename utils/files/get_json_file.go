@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/vchilikov/takeout-fix/internal/mediaext"
 )
 
 var numberSuffixRe = regexp.MustCompile(`\(\d+\)`)
@@ -169,10 +171,7 @@ func normalizeNameKey(name string) string {
 }
 
 func stripKnownMediaExtension(name string) string {
-	known := []string{
-		".3gp", ".dng", ".gif", ".heic", ".jpeg", ".jpg", ".m4v", ".mov", ".mp4", ".png", ".tif", ".tiff",
-	}
-	for _, ext := range known {
+	for _, ext := range mediaext.Supported {
 		if strings.HasSuffix(name, ext) {
 			return strings.TrimSuffix(name, ext)
 		}

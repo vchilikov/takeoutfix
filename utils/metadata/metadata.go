@@ -4,31 +4,78 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
+	"github.com/vchilikov/takeout-fix/internal/exifcmd"
+	"github.com/vchilikov/takeout-fix/internal/mediaext"
 	"github.com/vchilikov/takeout-fix/internal/patharg"
 )
 
+type ApplyResult struct {
+	UsedXMPSidecar   bool
+	CreateDateWarned bool
+}
+
 func Apply(mediaPath string, jsonPath string) error {
+	_, err := ApplyDetailed(mediaPath, jsonPath)
+	return err
+}
+
+func ApplyDetailed(mediaPath string, jsonPath string) (ApplyResult, error) {
+	return ApplyDetailedWithRunner(mediaPath, jsonPath, runExiftool)
+}
+
+func ApplyDetailedWithRunner(
+	mediaPath string,
+	jsonPath string,
+	run func(args []string) (string, error),
+) (ApplyResult, error) {
+	result := ApplyResult{}
+	if run == nil {
+		return result, fmt.Errorf("nil exiftool runner")
+	}
+
 	var outMediaPath string
 	if hasSupportedExtension(mediaPath) {
 		outMediaPath = mediaPath
 	} else {
-		fmt.Printf("🚗 writing metadata in xmp sidecar for %s\n", mediaPath)
 		outMediaPath = mediaPath + ".xmp"
+		result.UsedXMPSidecar = true
 	}
 
-	cmd := exec.Command("exiftool", buildExiftoolArgs(jsonPath, outMediaPath)...)
-
-	data, err := cmd.CombinedOutput()
+	includeCreateDate := shouldWriteFileCreateDate()
+	args := buildExiftoolArgs(jsonPath, outMediaPath, includeCreateDate)
+	output, err := run(args)
 	if err != nil {
-		return fmt.Errorf("could not fix metadata for %s\nerror: %w\noutput: %s", mediaPath, err, string(data))
+		if includeCreateDate && strings.Contains(strings.ToLower(output), "filecreatedate") {
+			// Some filesystems and formats may not support FileCreateDate writes.
+			retryArgs := buildExiftoolArgs(jsonPath, outMediaPath, false)
+			retryOutput, retryErr := run(retryArgs)
+			if retryErr == nil {
+				result.CreateDateWarned = true
+				return result, nil
+			}
+			return result, fmt.Errorf("could not fix metadata for %s\nerror: %w\noutput: %s", mediaPath, retryErr, retryOutput)
+		}
+		return result, fmt.Errorf("could not fix metadata for %s\nerror: %w\noutput: %s", mediaPath, err, output)
 	}
 
-	return nil
+	return result, nil
 }
 
-func buildExiftoolArgs(jsonPath string, outMediaPath string) []string {
+func runExiftool(args []string) (string, error) {
+	bin, err := exifcmd.Resolve()
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command(bin, args...)
+	data, err := cmd.CombinedOutput()
+	return string(data), err
+}
+
+func buildExiftoolArgs(jsonPath string, outMediaPath string, includeCreateDate bool) []string {
 	args := []string{
 		"-d", "%s",
 		"-m",
@@ -43,36 +90,36 @@ func buildExiftoolArgs(jsonPath string, outMediaPath string) []string {
 		"-GPSLatitudeRef<GeoDataLatitude",
 		"-GPSLongitude<GeoDataLongitude",
 		"-GPSLongitudeRef<GeoDataLongitude",
-		"-overwrite_original",
+		"-GPSAltitude<GeoDataExifAltitude",
+		"-GPSLatitude<GeoDataExifLatitude",
+		"-GPSLatitudeRef<GeoDataExifLatitude",
+		"-GPSLongitude<GeoDataExifLongitude",
+		"-GPSLongitudeRef<GeoDataExifLongitude",
+		"-FileModifyDate<PhotoTakenTimeTimestamp",
 	}
 
-	args = append(args, "--", patharg.Safe(outMediaPath))
+	if includeCreateDate {
+		args = append(args, "-FileCreateDate<PhotoTakenTimeTimestamp")
+	}
+
+	args = append(args,
+		"-overwrite_original",
+	)
+
+	args = append(args, patharg.Safe(outMediaPath))
 	return args
+}
+
+func shouldWriteFileCreateDate() bool {
+	return runtime.GOOS == "darwin"
 }
 
 func hasSupportedExtension(path string) bool {
 	ext := filepath.Ext(path)
-
-	var exifSupportExtensions = []string{
-		".3gp",
-		".dng",
-		".gif",
-		".heic",
-		".jpeg",
-		".jpg",
-		".m4v",
-		".mov",
-		".mp4",
-		".png",
-		".tif",
-		".tiff",
-	}
-
-	for _, supportedExt := range exifSupportExtensions {
+	for _, supportedExt := range mediaext.Supported {
 		if strings.EqualFold(ext, supportedExt) {
 			return true
 		}
 	}
-
 	return false
 }

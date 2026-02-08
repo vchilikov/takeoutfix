@@ -8,43 +8,97 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/vchilikov/takeout-fix/internal/exifcmd"
 	"github.com/vchilikov/takeout-fix/internal/patharg"
 )
 
+type FixResult struct {
+	Path    string
+	Renamed bool
+}
+
 func Fix(mediaPath string) (string, error) {
+	result, err := FixDetailed(mediaPath)
+	return result.Path, err
+}
+
+func FixDetailed(mediaPath string) (FixResult, error) {
+	return FixDetailedWithRunner(mediaPath, runExiftool)
+}
+
+func FixDetailedWithRunner(mediaPath string, run func(args []string) (string, error)) (FixResult, error) {
 	currentExt := filepath.Ext(mediaPath)
-	newExt, err := getNewExtension(mediaPath)
+	newExt, err := getNewExtension(mediaPath, run)
 	if err != nil {
-		return mediaPath, fmt.Errorf("could not get the proper extensions for %s: %w", mediaPath, err)
+		return FixResult{Path: mediaPath}, fmt.Errorf("could not get the proper extensions for %s: %w", mediaPath, err)
 	}
 
 	if areExtensionsCompatible(currentExt, newExt) {
-		return mediaPath, nil
+		return FixResult{Path: mediaPath}, nil
 	}
 
 	baseFileName := strings.TrimSuffix(mediaPath, currentExt)
 	newMediaPath, err := getNewFileName(baseFileName, newExt)
 	if err != nil {
-		return mediaPath, fmt.Errorf("could not generate a new file name for %s with %s extensions: %w", mediaPath, newExt, err)
+		return FixResult{Path: mediaPath}, fmt.Errorf("could not generate a new file name for %s with %s extensions: %w", mediaPath, newExt, err)
 	}
 
 	err = os.Rename(mediaPath, newMediaPath)
 	if err != nil {
-		return mediaPath, err
+		return FixResult{Path: mediaPath}, err
 	}
 
-	fmt.Printf("🔄 renamed %s -> %s\n", mediaPath, newMediaPath)
-	return newMediaPath, nil
+	return FixResult{Path: newMediaPath, Renamed: true}, nil
 }
 
-func getNewExtension(mediaPath string) (string, error) {
-	cmd := exec.Command("exiftool", "-p", ".$FileTypeExtension", "--", patharg.Safe(mediaPath))
-	out, err := cmd.Output()
+func runExiftool(args []string) (string, error) {
+	bin, err := exifcmd.Resolve()
 	if err != nil {
 		return "", err
 	}
 
-	return strings.TrimSpace(string(out)), nil
+	cmd := exec.Command(bin, args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+func getNewExtension(mediaPath string, run func(args []string) (string, error)) (string, error) {
+	if run == nil {
+		return "", fmt.Errorf("nil exiftool runner")
+	}
+
+	out, err := run([]string{"-p", ".$FileTypeExtension", patharg.Safe(mediaPath)})
+	if err != nil {
+		return "", err
+	}
+
+	ext := parseFileTypeExtension(out)
+	if ext == "" {
+		return "", fmt.Errorf("empty file type extension for %s", mediaPath)
+	}
+	return ext, nil
+}
+
+func parseFileTypeExtension(output string) string {
+	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		lower := strings.ToLower(line)
+		if strings.HasPrefix(lower, "warning:") || strings.HasPrefix(lower, "error:") {
+			continue
+		}
+		if !strings.HasPrefix(line, ".") {
+			line = "." + line
+		}
+		return line
+	}
+	return ""
 }
 
 func areExtensionsCompatible(ext1 string, ext2 string) bool {
@@ -106,5 +160,5 @@ func generateRandomSuffix() (string, error) {
 
 func doesFileExist(filePath string) bool {
 	_, err := os.Stat(filePath)
-	return !os.IsNotExist(err)
+	return err == nil
 }
