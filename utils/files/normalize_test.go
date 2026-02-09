@@ -33,6 +33,26 @@ func TestNormalizeJSONKey(t *testing.T) {
 			in:   "PXL.2024.IMG_0001.jpg.supplemental-metadata.json",
 			want: "pxl.2024.img_0001",
 		},
+		{
+			name: "truncated supplemental .suppl suffix",
+			in:   "IMG_0001.jpg.suppl.json",
+			want: "img_0001",
+		},
+		{
+			name: "truncated supplemental .supplemental-met suffix",
+			in:   "IMG_0001.jpg.supplemental-met.json",
+			want: "img_0001",
+		},
+		{
+			name: "truncated supplemental with dedup number",
+			in:   "IMG_0001.jpg.suppl(1).json",
+			want: "img_0001",
+		},
+		{
+			name: "double extension with truncated supplemental",
+			in:   "VID_0001.mp4.mov.supplemental-m.json",
+			want: "vid_0001",
+		},
 	}
 
 	for _, tt := range tests {

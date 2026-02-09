@@ -77,6 +77,11 @@ Yandex Disk Russian guide: [docs/clouds/yandex-disk.ru.md](docs/clouds/yandex-di
 
 ## Troubleshooting
 
+- **macOS: "takeoutfix" Not Opened / Apple could not verify**
+  - This is normal for binaries downloaded from the internet. Remove the quarantine attribute and run again:
+    ```bash
+    xattr -d com.apple.quarantine ./takeoutfix
+    ```
 - `No ZIP archives found in current folder.`
   - Move all Takeout ZIPs to the top level of your working folder and run again.
 - `Corrupt ZIP files found. Processing stopped.`

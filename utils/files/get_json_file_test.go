@@ -95,6 +95,48 @@ func TestGetJsonFile(t *testing.T) {
 			wantErr:   true,
 		},
 		{
+			name:      "truncated supplemental .suppl suffix",
+			mediaFile: "IMG_0001.jpg",
+			jsonFiles: map[string]struct{}{"IMG_0001.jpg.suppl.json": {}},
+			want:      "IMG_0001.jpg.suppl.json",
+		},
+		{
+			name:      "truncated supplemental .sup suffix",
+			mediaFile: "IMG_0001.jpg",
+			jsonFiles: map[string]struct{}{"IMG_0001.jpg.sup.json": {}},
+			want:      "IMG_0001.jpg.sup.json",
+		},
+		{
+			name:      "truncated supplemental .supp suffix",
+			mediaFile: "IMG_0001.jpg",
+			jsonFiles: map[string]struct{}{"IMG_0001.jpg.supp.json": {}},
+			want:      "IMG_0001.jpg.supp.json",
+		},
+		{
+			name:      "truncated supplemental .supplemental-met suffix",
+			mediaFile: "IMG_0001.jpg",
+			jsonFiles: map[string]struct{}{"IMG_0001.jpg.supplemental-met.json": {}},
+			want:      "IMG_0001.jpg.supplemental-met.json",
+		},
+		{
+			name:      "truncated supplemental with dedup number",
+			mediaFile: "IMG_0001.jpg",
+			jsonFiles: map[string]struct{}{"IMG_0001.jpg.suppl(1).json": {}},
+			want:      "IMG_0001.jpg.suppl(1).json",
+		},
+		{
+			name:      "double extension mp4.mov with truncated supplemental",
+			mediaFile: "VID_0001.mp4.mov",
+			jsonFiles: map[string]struct{}{"VID_0001.mp4.mov.supplemental-m.json": {}},
+			want:      "VID_0001.mp4.mov.supplemental-m.json",
+		},
+		{
+			name:      "minimal truncated supplemental .s suffix",
+			mediaFile: "IMG_0001.jpg",
+			jsonFiles: map[string]struct{}{"IMG_0001.jpg.s.json": {}},
+			want:      "IMG_0001.jpg.s.json",
+		},
+		{
 			name:      "not found",
 			mediaFile: "missing.jpg",
 			jsonFiles: map[string]struct{}{},

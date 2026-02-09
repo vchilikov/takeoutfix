@@ -11,7 +11,9 @@ import (
 
 var numberSuffixRe = regexp.MustCompile(`\(\d+\)`)
 var randomSuffixRe = regexp.MustCompile(`-[a-z0-9]{5}$`)
-var supplementalSuffixRe = regexp.MustCompile(`(?i)\.supplemental-meta[^.]*$`)
+
+const supplementalFull = ".supplemental-metadata"
+
 var trailingNumberSuffixRe = regexp.MustCompile(`\(\d+\)$`)
 
 func getJsonFile(mediaFile string, jsonFiles map[string]struct{}) (string, error) {
@@ -82,18 +84,24 @@ func getJsonFile(mediaFile string, jsonFiles map[string]struct{}) (string, error
 }
 
 func findJSONByStem(stem string, jsonFiles map[string]struct{}) (string, bool) {
-	for _, suffix := range []string{".json", ".supplemental-metadata.json", ".supplemental-metada.json"} {
-		if jsonFile, ok := findJSONCaseInsensitive(stem+suffix, jsonFiles); ok {
-			return jsonFile, true
-		}
+	if jsonFile, ok := findJSONCaseInsensitive(stem+".json", jsonFiles); ok {
+		return jsonFile, true
 	}
 
-	var matches []string
 	lowerStem := strings.ToLower(stem)
+	var matches []string
 	for jsonFile := range jsonFiles {
-		lowerJSON := strings.ToLower(jsonFile)
-		if strings.HasPrefix(lowerJSON, lowerStem+".supplemental-meta") &&
-			strings.HasSuffix(lowerJSON, ".json") {
+		lower := strings.ToLower(jsonFile)
+		if !strings.HasSuffix(lower, ".json") {
+			continue
+		}
+		base := strings.TrimSuffix(lower, ".json")
+		base = trailingNumberSuffixRe.ReplaceAllString(base, "")
+		if !strings.HasPrefix(base, lowerStem+".") {
+			continue
+		}
+		suffix := base[len(lowerStem):]
+		if isSupplementalPrefix(suffix) {
 			matches = append(matches, jsonFile)
 		}
 	}
@@ -101,7 +109,6 @@ func findJSONByStem(stem string, jsonFiles map[string]struct{}) (string, bool) {
 	if len(matches) != 1 {
 		return "", false
 	}
-
 	return matches[0], true
 }
 
@@ -147,10 +154,28 @@ func normalizeJSONKey(jsonFile string) string {
 	if !strings.HasSuffix(name, ".json") {
 		return ""
 	}
-
 	name = strings.TrimSuffix(name, ".json")
-	name = supplementalSuffixRe.ReplaceAllString(name, "")
+	name = trailingNumberSuffixRe.ReplaceAllString(name, "")
+	name = stripSupplementalSuffix(name)
 	return normalizeNameKey(name)
+}
+
+func isSupplementalPrefix(s string) bool {
+	lower := strings.ToLower(s)
+	if len(lower) < 2 || len(lower) > len(supplementalFull) {
+		return false
+	}
+	return strings.HasPrefix(supplementalFull, lower)
+}
+
+func stripSupplementalSuffix(name string) string {
+	for i := len(supplementalFull); i >= 2; i-- {
+		prefix := supplementalFull[:i]
+		if strings.HasSuffix(name, prefix) {
+			return name[:len(name)-i]
+		}
+	}
+	return name
 }
 
 func normalizeMediaLookupKey(mediaFile string) string {
@@ -171,9 +196,17 @@ func normalizeNameKey(name string) string {
 }
 
 func stripKnownMediaExtension(name string) string {
-	for _, ext := range mediaext.Supported {
-		if strings.HasSuffix(name, ext) {
-			return strings.TrimSuffix(name, ext)
+	for range 2 {
+		found := false
+		for _, ext := range mediaext.Supported {
+			if strings.HasSuffix(name, ext) {
+				name = strings.TrimSuffix(name, ext)
+				found = true
+				break
+			}
+		}
+		if !found {
+			break
 		}
 	}
 	return name
