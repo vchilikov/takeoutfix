@@ -208,6 +208,10 @@ func TestApplyDetailedWithRunner_RetriesOnErrorReading(t *testing.T) {
 }
 
 func TestApplyDetailedWithRunner_FileCreateDateFallbackAfterStrip(t *testing.T) {
+	orig := shouldWriteFileCreateDate
+	shouldWriteFileCreateDate = func() bool { return true }
+	defer func() { shouldWriteFileCreateDate = orig }()
+
 	callCount := 0
 	runner := func(args []string) (string, error) {
 		callCount++

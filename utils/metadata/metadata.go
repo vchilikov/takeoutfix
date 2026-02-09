@@ -135,7 +135,7 @@ func buildExiftoolArgs(jsonPath string, outMediaPath string, includeCreateDate b
 	return args
 }
 
-func shouldWriteFileCreateDate() bool {
+var shouldWriteFileCreateDate = func() bool {
 	return runtime.GOOS == "darwin"
 }
 
