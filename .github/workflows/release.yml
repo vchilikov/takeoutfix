@@ -77,7 +77,7 @@ jobs:
 
       - name: Setup Go
         if: steps.pr_check.outputs.should_release == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
