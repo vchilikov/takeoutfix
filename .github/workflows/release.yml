@@ -27,7 +27,7 @@ jobs:
 
       - name: Check commit is from merged PR
         id: pr_check
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
