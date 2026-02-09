@@ -47,15 +47,15 @@ func TestRunStopsOnCorruptZip(t *testing.T) {
 	}
 }
 
-func TestRunFailsWhenAutoInstallUnavailable(t *testing.T) {
+func TestRunFailsWhenDependenciesAreMissing(t *testing.T) {
 	restore := stubWizardDeps()
 	defer restore()
 
 	checkDependencies = func() []preflight.Dependency {
-		return []preflight.Dependency{{Name: "exiftool", InstallCmd: nil}}
+		return []preflight.Dependency{{Name: "exiftool"}}
 	}
 	discoverZips = func(string) ([]preflight.ZipArchive, error) {
-		t.Fatalf("zip scan should not start when install is unavailable")
+		t.Fatalf("zip scan should not start when dependencies are missing")
 		return nil, nil
 	}
 
@@ -64,54 +64,17 @@ func TestRunFailsWhenAutoInstallUnavailable(t *testing.T) {
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Automatic install is supported on macOS (Homebrew), Linux (apt/dnf/pacman), and Windows (winget). Please install manually and rerun.")) {
-		t.Fatalf("expected unsupported auto-install message, got:\n%s", out.String())
+	if !bytes.Contains(out.Bytes(), []byte("Missing dependencies: exiftool")) {
+		t.Fatalf("expected missing dependency message, got:\n%s", out.String())
 	}
-}
-
-func TestRunInstallsDependenciesWhenAutoInstallAvailable(t *testing.T) {
-	restore := stubWizardDeps()
-	defer restore()
-
-	missing := []preflight.Dependency{
-		{Name: "exiftool", InstallCmd: []string{"sudo", "apt-get", "install", "-y", "libimage-exiftool-perl"}},
+	if !bytes.Contains(out.Bytes(), []byte(installerURLMacLinux)) {
+		t.Fatalf("expected installer URL for macOS/Linux, got:\n%s", out.String())
 	}
-	checkCalls := 0
-	checkDependencies = func() []preflight.Dependency {
-		checkCalls++
-		if checkCalls == 1 {
-			return missing
-		}
-		return nil
+	if !bytes.Contains(out.Bytes(), []byte(installerURLWindows)) {
+		t.Fatalf("expected installer URL for windows, got:\n%s", out.String())
 	}
-
-	installCalls := 0
-	installDependencies = func(deps []preflight.Dependency, in io.Reader, out io.Writer) error {
-		installCalls++
-		if in == nil {
-			t.Fatalf("expected non-nil input reader for installer")
-		}
-		if len(deps) != 1 || deps[0].Name != "exiftool" {
-			t.Fatalf("unexpected deps passed to installer: %#v", deps)
-		}
-		return nil
-	}
-
-	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
-
-	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString("y\n"), &out)
-	if code != ExitPreflightFail {
-		t.Fatalf("expected preflight fail due to no archives, got %d\n%s", code, out.String())
-	}
-	if installCalls != 1 {
-		t.Fatalf("expected installer to run once, got %d", installCalls)
-	}
-	if checkCalls != 2 {
-		t.Fatalf("expected dependency check twice (before/after install), got %d", checkCalls)
-	}
-	if !bytes.Contains(out.Bytes(), []byte("Running: sudo apt-get install -y libimage-exiftool-perl")) {
-		t.Fatalf("expected install command to be shown, got:\n%s", out.String())
+	if bytes.Contains(out.Bytes(), []byte("Install missing dependencies now? [y/N]: ")) {
+		t.Fatalf("did not expect interactive dependency install prompt, got:\n%s", out.String())
 	}
 }
 
@@ -564,7 +527,6 @@ func TestRunSkipsDiskCheckWhenAllArchivesExtracted(t *testing.T) {
 
 func stubWizardDeps() func() {
 	origCheckDependencies := checkDependencies
-	origInstallDependencies := installDependencies
 	origDiscoverZips := discoverZips
 	origValidateAll := validateAll
 	origCheckDiskSpace := checkDiskSpace
@@ -577,7 +539,6 @@ func stubWizardDeps() func() {
 
 	return func() {
 		checkDependencies = origCheckDependencies
-		installDependencies = origInstallDependencies
 		discoverZips = origDiscoverZips
 		validateAll = origValidateAll
 		checkDiskSpace = origCheckDiskSpace
