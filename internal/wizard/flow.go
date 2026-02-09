@@ -19,8 +19,8 @@ const (
 	ExitPreflightFail = 2
 	ExitRuntimeFail   = 3
 
-	installerURLMacLinux = "https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.sh"
-	installerURLWindows  = "https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.ps1"
+	installerURLMacLinux = "https://github.com/vchilikov/takeout-fix/releases/latest/download/install.sh"
+	installerURLWindows  = "https://github.com/vchilikov/takeout-fix/releases/latest/download/install.ps1"
 )
 
 var (

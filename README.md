@@ -16,13 +16,13 @@ Run the command directly in the folder with your Takeout ZIP files.
 macOS/Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.sh | sh
+curl -fsSL https://github.com/vchilikov/takeout-fix/releases/latest/download/install.sh | sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.ps1 | iex
+iwr -useb https://github.com/vchilikov/takeout-fix/releases/latest/download/install.ps1 | iex
 ```
 
 The installer works in your current folder, detects OS/arch, downloads the latest release, verifies `checksums.txt`, ensures `exiftool` is available (best-effort auto-install), runs processing, and removes the downloaded runtime binary after completion.

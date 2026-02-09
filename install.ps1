@@ -36,6 +36,10 @@ function Ensure-Exiftool {
         throw "winget failed to install exiftool (exit code $LASTEXITCODE)."
     }
 
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $env:PATH = "$machinePath;$userPath"
+
     if (-not (Get-Command exiftool -ErrorAction SilentlyContinue)) {
         throw "exiftool installation completed but exiftool is still not available in PATH."
     }
@@ -124,16 +128,12 @@ try {
     Write-Step "Running TakeoutFix in: $Cwd"
     & $RunExe --workdir $Cwd
     $ExitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
-    if ($ExitCode -ne 0) {
-        throw "takeoutfix exited with code $ExitCode."
-    }
 }
 catch {
     if ($ExitCode -eq 0) {
         $ExitCode = 1
     }
-    $global:LASTEXITCODE = $ExitCode
-    throw
+    Write-Host "Error: $_"
 }
 finally {
     if ($RunExe -and (Test-Path -LiteralPath $RunExe)) {
@@ -144,4 +144,4 @@ finally {
     }
 }
 
-$global:LASTEXITCODE = $ExitCode
+exit $ExitCode
