@@ -67,11 +67,11 @@ func TestRunFailsWhenDependenciesAreMissing(t *testing.T) {
 	if !bytes.Contains(out.Bytes(), []byte("Missing dependencies: exiftool")) {
 		t.Fatalf("expected missing dependency message, got:\n%s", out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("install.sh | sh")) {
-		t.Fatalf("expected installer hint for macOS/Linux, got:\n%s", out.String())
+	if !bytes.Contains(out.Bytes(), []byte(installerURLMacLinux)) {
+		t.Fatalf("expected installer URL for macOS/Linux, got:\n%s", out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("install.ps1 | iex")) {
-		t.Fatalf("expected installer hint for windows, got:\n%s", out.String())
+	if !bytes.Contains(out.Bytes(), []byte(installerURLWindows)) {
+		t.Fatalf("expected installer URL for windows, got:\n%s", out.String())
 	}
 	if bytes.Contains(out.Bytes(), []byte("Install missing dependencies now? [y/N]: ")) {
 		t.Fatalf("did not expect interactive dependency install prompt, got:\n%s", out.String())

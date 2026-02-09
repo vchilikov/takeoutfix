@@ -224,7 +224,17 @@ extract_binary() {
 
 	src_bin="${TMP_DIR}/takeoutfix"
 	if [ ! -f "$src_bin" ]; then
-		src_bin=$(find "$TMP_DIR" -type f -name takeoutfix -print | head -n 1 || true)
+		matches=$(find "$TMP_DIR" -type f -name takeoutfix -print || true)
+		if [ -z "$matches" ]; then
+			fail "takeoutfix binary was not found in downloaded archive."
+		fi
+
+		match_count=$(printf '%s\n' "$matches" | awk 'END { print NR }')
+		if [ "$match_count" -gt 1 ]; then
+			fail "multiple takeoutfix binaries found in archive; refusing ambiguous selection."
+		fi
+
+		src_bin="$matches"
 	fi
 	if [ -z "$src_bin" ] || [ ! -f "$src_bin" ]; then
 		fail "takeoutfix binary was not found in downloaded archive."

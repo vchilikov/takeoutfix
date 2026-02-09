@@ -18,6 +18,9 @@ const (
 	ExitSuccess       = 0
 	ExitPreflightFail = 2
 	ExitRuntimeFail   = 3
+
+	installerURLMacLinux = "https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.sh"
+	installerURLWindows  = "https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.ps1"
 )
 
 var (
@@ -55,8 +58,8 @@ func Run(cwd string, in io.Reader, out io.Writer) int {
 		}
 		writef(out, "Missing dependencies: %s\n", strings.Join(names, ", "))
 		writeLine(out, "Install dependencies and rerun.")
-		writeLine(out, "macOS/Linux: curl -fsSL https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.sh | sh")
-		writeLine(out, "Windows (PowerShell): iwr -useb https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.ps1 | iex")
+		writeLine(out, "macOS/Linux: curl -fsSL "+installerURLMacLinux+" | sh")
+		writeLine(out, "Windows (PowerShell): iwr -useb "+installerURLWindows+" | iex")
 		writeLine(out, "Manual fallback: install exiftool and ensure it is available in PATH.")
 		return finish(ExitPreflightFail)
 	}
