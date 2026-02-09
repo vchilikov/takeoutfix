@@ -9,7 +9,25 @@ It prepares Google Takeout archives and restores photo/video metadata such as ca
 2. Put all `*.zip` files into one local folder.
 3. Run TakeoutFix in that folder, then upload the processed output to your new storage.
 
-## Run TakeoutFix
+## One-liner Installer + Runner (Recommended)
+
+Run the command directly in the folder with your Takeout ZIP files.
+
+macOS/Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.ps1 | iex
+```
+
+The installer works in your current folder, detects OS/arch, downloads the latest release, verifies `checksums.txt`, ensures `exiftool` is available (best-effort auto-install), runs processing, and removes the downloaded runtime binary after completion.
+
+## Run TakeoutFix Manually
 
 ### Option A: Download a ready binary (recommended)
 
@@ -41,7 +59,7 @@ Windows (PowerShell):
 
 - Supported OS: macOS, Linux, Windows.
 - `exiftool` must be available in `PATH`.
-- If `exiftool` is missing, TakeoutFix can offer automatic installation on macOS/Linux/Windows.
+- If `exiftool` is missing, use the one-liner installer above or install it manually.
 - You need enough free disk space for extraction and processing.
 
 ## What You Will See in the Terminal
@@ -87,7 +105,7 @@ Yandex Disk Russian guide: [docs/clouds/yandex-disk.ru.md](docs/clouds/yandex-di
 - `Corrupt ZIP files found. Processing stopped.`
   - Re-download broken archive parts from Google Takeout, then rerun.
 - `Missing dependencies: exiftool`
-  - Approve auto-install prompt or install manually, then rerun.
+  - Run the one-liner installer command for your OS, or install `exiftool` manually and rerun.
 - `Not enough disk space for normal mode.`
   - Use delete mode when prompted or free up disk space.
 

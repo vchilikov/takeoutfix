@@ -21,17 +21,16 @@ const (
 )
 
 var (
-	checkDependencies   = preflight.CheckDependencies
-	installDependencies = preflight.InstallDependencies
-	discoverZips        = preflight.DiscoverTopLevelZips
-	validateAll         = preflight.ValidateAll
-	checkDiskSpace      = preflight.CheckDiskSpace
-	loadState           = state.Load
-	saveState           = state.Save
-	shouldSkip          = state.ShouldSkipExtraction
-	extractArchiveFile  = extract.ExtractArchive
-	processTakeout      = processor.RunWithProgress
-	removeFile          = os.Remove
+	checkDependencies  = preflight.CheckDependencies
+	discoverZips       = preflight.DiscoverTopLevelZips
+	validateAll        = preflight.ValidateAll
+	checkDiskSpace     = preflight.CheckDiskSpace
+	loadState          = state.Load
+	saveState          = state.Save
+	shouldSkip         = state.ShouldSkipExtraction
+	extractArchiveFile = extract.ExtractArchive
+	processTakeout     = processor.RunWithProgress
+	removeFile         = os.Remove
 )
 
 func Run(cwd string, in io.Reader, out io.Writer) int {
@@ -55,28 +54,11 @@ func Run(cwd string, in io.Reader, out io.Writer) int {
 			names = append(names, dep.Name)
 		}
 		writef(out, "Missing dependencies: %s\n", strings.Join(names, ", "))
-		if !canAutoInstall(missing) {
-			writeLine(out, "Automatic install is supported on macOS (Homebrew), Linux (apt/dnf/pacman), and Windows (winget). Please install manually and rerun.")
-			return finish(ExitPreflightFail)
-		}
-
-		if !askYesNo(reader, out, "Install missing dependencies now? [y/N]: ") {
-			return finish(ExitPreflightFail)
-		}
-
-		for _, dep := range missing {
-			writef(out, "Running: %s\n", strings.Join(dep.InstallCmd, " "))
-		}
-		if err := installDependencies(missing, reader, out); err != nil {
-			writef(out, "Dependency install failed: %v\n", err)
-			report.addProblem("dependency install errors", 1, err.Error())
-			return finish(ExitPreflightFail)
-		}
-
-		if stillMissing := checkDependencies(); len(stillMissing) > 0 {
-			writef(out, "Missing dependencies: %s\n", dependencyNames(stillMissing))
-			return finish(ExitPreflightFail)
-		}
+		writeLine(out, "Install dependencies and rerun.")
+		writeLine(out, "macOS/Linux: curl -fsSL https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.sh | sh")
+		writeLine(out, "Windows (PowerShell): iwr -useb https://raw.githubusercontent.com/vchilikov/takeout-fix/main/install.ps1 | iex")
+		writeLine(out, "Manual fallback: install exiftool and ensure it is available in PATH.")
+		return finish(ExitPreflightFail)
 	}
 	writeLine(out, "Dependencies are OK.")
 
@@ -264,23 +246,6 @@ func askYesNo(reader *bufio.Reader, out io.Writer, prompt string) bool {
 	default:
 		return false
 	}
-}
-
-func canAutoInstall(missing []preflight.Dependency) bool {
-	for _, dep := range missing {
-		if len(dep.InstallCmd) == 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func dependencyNames(missing []preflight.Dependency) string {
-	names := make([]string, 0, len(missing))
-	for _, dep := range missing {
-		names = append(names, dep.Name)
-	}
-	return strings.Join(names, ", ")
 }
 
 func progressPercent(done int, total int) int {
