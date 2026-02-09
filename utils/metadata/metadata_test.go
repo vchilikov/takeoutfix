@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"fmt"
 	"runtime"
 	"slices"
 	"strings"
@@ -79,5 +80,186 @@ func TestBuildExiftoolArgs_GeoDataExifComesAfterGeoData(t *testing.T) {
 	}
 	if geoDataExif <= geoData {
 		t.Fatalf("expected GeoDataExif mapping to be applied after GeoData mapping, got %v", args)
+	}
+}
+
+func TestApplyDetailedWithRunner_RetriesOnBadFormat(t *testing.T) {
+	var calls [][]string
+	runner := func(args []string) (string, error) {
+		cp := make([]string, len(args))
+		copy(cp, args)
+		calls = append(calls, cp)
+		switch len(calls) {
+		case 1:
+			return "Error: Bad format (0) for ExifIFD entry 25 - photo.jpg\n", fmt.Errorf("exiftool failed")
+		case 2: // strip
+			return "1 image files updated\n", nil
+		case 3: // retry apply
+			return "1 image files updated\n", nil
+		default:
+			return "", fmt.Errorf("unexpected call")
+		}
+	}
+
+	result, err := ApplyDetailedWithRunner("photo.jpg", "meta.json", runner)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.CreateDateWarned {
+		t.Fatalf("CreateDateWarned should be false")
+	}
+	if len(calls) != 3 {
+		t.Fatalf("expected 3 runner calls, got %d", len(calls))
+	}
+	// Second call should be the strip command.
+	if !slices.Contains(calls[1], "-all=") {
+		t.Fatalf("expected strip call with -all=, got: %v", calls[1])
+	}
+}
+
+func TestApplyDetailedWithRunner_ReturnsErrorWhenStripFails(t *testing.T) {
+	callCount := 0
+	runner := func(args []string) (string, error) {
+		callCount++
+		switch callCount {
+		case 1:
+			return "Error: Bad format (0) for ExifIFD entry 25\n", fmt.Errorf("exiftool failed")
+		case 2: // strip fails too
+			return "strip error\n", fmt.Errorf("strip failed")
+		default:
+			return "", fmt.Errorf("unexpected call")
+		}
+	}
+
+	_, err := ApplyDetailedWithRunner("photo.jpg", "meta.json", runner)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "could not fix metadata for photo.jpg") {
+		t.Fatalf("expected original error message, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "stripping corrupt EXIF") {
+		t.Fatalf("should not mention stripping when strip itself failed")
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 runner calls, got %d", callCount)
+	}
+}
+
+func TestApplyDetailedWithRunner_ReturnsErrorWhenRetryAfterStripFails(t *testing.T) {
+	callCount := 0
+	runner := func(args []string) (string, error) {
+		callCount++
+		switch callCount {
+		case 1:
+			return "Error: Bad format (0) for ExifIFD entry 25\n", fmt.Errorf("exiftool failed")
+		case 2: // strip succeeds
+			return "1 image files updated\n", nil
+		case 3: // retry fails
+			return "some other error\n", fmt.Errorf("retry failed")
+		default:
+			return "", fmt.Errorf("unexpected call")
+		}
+	}
+
+	_, err := ApplyDetailedWithRunner("photo.jpg", "meta.json", runner)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "after stripping corrupt EXIF") {
+		t.Fatalf("expected error to mention stripping, got: %v", err)
+	}
+	if callCount != 3 {
+		t.Fatalf("expected 3 runner calls, got %d", callCount)
+	}
+}
+
+func TestApplyDetailedWithRunner_RetriesOnErrorReading(t *testing.T) {
+	var calls [][]string
+	runner := func(args []string) (string, error) {
+		cp := make([]string, len(args))
+		copy(cp, args)
+		calls = append(calls, cp)
+		switch len(calls) {
+		case 1:
+			return "Error: Error reading OtherImageStart data in IFD0 - photo.jpg\n", fmt.Errorf("exiftool failed")
+		case 2: // strip
+			return "1 image files updated\n", nil
+		case 3: // retry apply
+			return "1 image files updated\n", nil
+		default:
+			return "", fmt.Errorf("unexpected call")
+		}
+	}
+
+	result, err := ApplyDetailedWithRunner("photo.jpg", "meta.json", runner)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.CreateDateWarned {
+		t.Fatalf("CreateDateWarned should be false")
+	}
+	if len(calls) != 3 {
+		t.Fatalf("expected 3 runner calls, got %d", len(calls))
+	}
+	if !slices.Contains(calls[1], "-all=") {
+		t.Fatalf("expected strip call with -all=, got: %v", calls[1])
+	}
+}
+
+func TestApplyDetailedWithRunner_FileCreateDateFallbackAfterStrip(t *testing.T) {
+	orig := shouldWriteFileCreateDate
+	shouldWriteFileCreateDate = func() bool { return true }
+	defer func() { shouldWriteFileCreateDate = orig }()
+
+	callCount := 0
+	runner := func(args []string) (string, error) {
+		callCount++
+		switch callCount {
+		case 1: // initial apply fails with corrupt EXIF
+			return "Error: Bad format (0) for ExifIFD entry 25\n", fmt.Errorf("exiftool failed")
+		case 2: // strip succeeds
+			return "1 image files updated\n", nil
+		case 3: // retry after strip fails with FileCreateDate error
+			return "Warning: Sorry, FileCreateDate is not supported\n", fmt.Errorf("exiftool failed")
+		case 4: // fallback without FileCreateDate succeeds
+			return "1 image files updated\n", nil
+		default:
+			return "", fmt.Errorf("unexpected call %d", callCount)
+		}
+	}
+
+	result, err := ApplyDetailedWithRunner("photo.jpg", "meta.json", runner)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if !result.CreateDateWarned {
+		t.Fatalf("expected CreateDateWarned to be true")
+	}
+	if callCount != 4 {
+		t.Fatalf("expected 4 runner calls, got %d", callCount)
+	}
+}
+
+func TestLooksLikeCorruptExif(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   bool
+	}{
+		{"bad format lowercase", "Warning: bad format for entry", true},
+		{"bad format mixed case", "Error: Bad format (0) for ExifIFD entry 25 - photo.jpg", true},
+		{"error reading lowercase", "error reading OtherImageStart data in IFD0", true},
+		{"error reading mixed case", "Error: Error reading OtherImageStart data in IFD0 - photo.jpg", true},
+		{"clean output", "1 image files updated", false},
+		{"empty output", "", false},
+		{"unrelated error", "Error: File not found - photo.jpg", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := looksLikeCorruptExif(tt.output); got != tt.want {
+				t.Errorf("looksLikeCorruptExif(%q) = %v, want %v", tt.output, got, tt.want)
+			}
+		})
 	}
 }

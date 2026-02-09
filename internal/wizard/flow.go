@@ -80,6 +80,8 @@ func Run(cwd string, in io.Reader, out io.Writer) int {
 	}
 	writeLine(out, "Dependencies are OK.")
 
+	dest := filepath.Join(cwd, "takeoutfix-extracted")
+
 	writeLine(out, "Scanning ZIP archives in current folder...")
 	zipScanStartedAt := time.Now()
 	zips, err := discoverZips(cwd)
@@ -90,104 +92,126 @@ func Run(cwd string, in io.Reader, out io.Writer) int {
 	}
 	report.ArchiveFound = len(zips)
 	if len(zips) == 0 {
-		writeLine(out, "No ZIP archives found in current folder.")
-		return finish(ExitPreflightFail)
-	}
-
-	writeLine(out, "Validating ZIP integrity (all archives)...")
-	zipValidateStartedAt := time.Now()
-	integrity := validateAll(zips)
-	report.ZipValidateDuration = time.Since(zipValidateStartedAt)
-	report.ArchiveCorrupt = len(integrity.Corrupt)
-	report.ArchiveValid = len(integrity.Checked) - report.ArchiveCorrupt
-	for _, corrupt := range integrity.Corrupt {
-		report.CorruptNames = append(report.CorruptNames, corrupt.Archive.Name)
-	}
-	if report.ArchiveCorrupt > 0 {
-		writeLine(out, "Corrupt ZIP files found. Processing stopped.")
-		return finish(ExitPreflightFail)
-	}
-	writeLine(out, "All ZIP archives are valid.")
-
-	writeLine(out, "Checking available disk space...")
-	diskCheckStartedAt := time.Now()
-	space, err := checkDiskSpace(cwd, integrity.Checked)
-	report.DiskCheckDuration = time.Since(diskCheckStartedAt)
-	if err != nil {
-		report.addProblem("disk check errors", 1, err.Error())
-		return finish(ExitRuntimeFail)
-	}
-	report.Disk = space
-	writef(
-		out,
-		"Disk: available=%s, required=%s, required with delete-mode=%s\n",
-		preflight.FormatBytes(space.AvailableBytes),
-		preflight.FormatBytes(space.RequiredBytes),
-		preflight.FormatBytes(space.RequiredWithDeleteBytes),
-	)
-
-	deleteMode := false
-	if !space.Enough {
-		writeLine(out, "Not enough disk space for normal mode.")
-		if !askYesNo(reader, out, "Enable delete-mode (remove ZIP right after successful extraction)? [y/N]: ") {
-			return finish(ExitPreflightFail)
-		}
-		if !space.EnoughWithDelete {
-			writeLine(out, "Still not enough space even with delete-mode.")
-			return finish(ExitPreflightFail)
-		}
-		deleteMode = true
-	}
-	report.DeleteMode = deleteMode
-
-	statePath := filepath.Join(cwd, ".takeoutfix", "state.json")
-	st, err := loadState(statePath)
-	if err != nil {
-		report.addProblem("state load errors", 1, err.Error())
-		st = state.New()
-	}
-
-	dest := filepath.Join(cwd, "takeoutfix-extracted")
-	writef(out, "Extracting archives into: %s\n", dest)
-	extractStartedAt := time.Now()
-	totalArchives := len(zips)
-	doneArchives := 0
-	for _, archive := range zips {
-		if shouldSkip(st, archive.Name, archive.Fingerprint) {
-			report.SkippedArchives++
-			doneArchives++
-			writef(out, "Extraction progress: %d/%d (%d%%) skipped: %s\n", doneArchives, totalArchives, progressPercent(doneArchives, totalArchives), archive.Name)
-			continue
-		}
-
-		filesExtracted, err := extractArchiveFile(archive.Path, dest)
+		info, err := os.Stat(dest)
 		if err != nil {
-			report.addProblem("extract errors", 1, archive.Name)
-			report.ExtractDuration = time.Since(extractStartedAt)
+			if os.IsNotExist(err) {
+				writeLine(out, "No ZIP archives found and no extracted data.")
+				return finish(ExitPreflightFail)
+			}
+			report.addProblem("extracted data access error", 1, err.Error())
 			return finish(ExitRuntimeFail)
 		}
+		if !info.IsDir() {
+			writeLine(out, "No ZIP archives found and extracted data path is not a directory.")
+			return finish(ExitPreflightFail)
+		}
+		writeLine(out, "No ZIP archives found. Re-processing previously extracted data...")
+	}
 
-		report.ExtractedArchives++
-		report.ExtractedFiles += filesExtracted
-		doneArchives++
-		writef(out, "Extraction progress: %d/%d (%d%%) extracted: %s\n", doneArchives, totalArchives, progressPercent(doneArchives, totalArchives), archive.Name)
+	if len(zips) > 0 {
+		writeLine(out, "Validating ZIP integrity (all archives)...")
+		zipValidateStartedAt := time.Now()
+		integrity := validateAll(zips)
+		report.ZipValidateDuration = time.Since(zipValidateStartedAt)
+		report.ArchiveCorrupt = len(integrity.Corrupt)
+		report.ArchiveValid = len(integrity.Checked) - report.ArchiveCorrupt
+		for _, corrupt := range integrity.Corrupt {
+			report.CorruptNames = append(report.CorruptNames, corrupt.Archive.Name)
+		}
+		if report.ArchiveCorrupt > 0 {
+			writeLine(out, "Corrupt ZIP files found. Processing stopped.")
+			return finish(ExitPreflightFail)
+		}
+		writeLine(out, "All ZIP archives are valid.")
 
-		entry := state.ArchiveState{Fingerprint: archive.Fingerprint, Extracted: true}
-		if deleteMode {
-			if err := removeFile(archive.Path); err != nil {
-				report.DeleteErrors = append(report.DeleteErrors, archive.Name)
-			} else {
-				report.DeletedZips++
-				entry.Deleted = true
+		statePath := filepath.Join(cwd, ".takeoutfix", "state.json")
+		st, err := loadState(statePath)
+		if err != nil {
+			report.addProblem("state load errors", 1, err.Error())
+			st = state.New()
+		}
+
+		var pending []preflight.ArchiveIntegrity
+		for _, ai := range integrity.Checked {
+			if !shouldSkip(st, ai.Archive.Name, ai.Archive.Fingerprint) {
+				pending = append(pending, ai)
 			}
 		}
-		st.Archives[archive.Name] = entry
 
-		if err := saveState(statePath, st); err != nil {
-			report.addProblem("state save errors", 1, err.Error())
+		deleteMode := false
+		if len(pending) > 0 {
+			writeLine(out, "Checking available disk space...")
+			diskCheckStartedAt := time.Now()
+			space, err := checkDiskSpace(cwd, pending)
+			report.DiskCheckDuration = time.Since(diskCheckStartedAt)
+			if err != nil {
+				report.addProblem("disk check errors", 1, err.Error())
+				return finish(ExitRuntimeFail)
+			}
+			report.Disk = space
+			writef(
+				out,
+				"Disk: available=%s, required=%s, required with delete-mode=%s\n",
+				preflight.FormatBytes(space.AvailableBytes),
+				preflight.FormatBytes(space.RequiredBytes),
+				preflight.FormatBytes(space.RequiredWithDeleteBytes),
+			)
+
+			if !space.Enough {
+				writeLine(out, "Not enough disk space for normal mode.")
+				if !askYesNo(reader, out, "Enable delete-mode (remove ZIP right after successful extraction)? [y/N]: ") {
+					return finish(ExitPreflightFail)
+				}
+				if !space.EnoughWithDelete {
+					writeLine(out, "Still not enough space even with delete-mode.")
+					return finish(ExitPreflightFail)
+				}
+				deleteMode = true
+			}
 		}
+		report.DeleteMode = deleteMode
+
+		writef(out, "Extracting archives into: %s\n", dest)
+		extractStartedAt := time.Now()
+		totalArchives := len(zips)
+		doneArchives := 0
+		for _, archive := range zips {
+			if shouldSkip(st, archive.Name, archive.Fingerprint) {
+				report.SkippedArchives++
+				doneArchives++
+				writef(out, "Extraction progress: %d/%d (%d%%) skipped: %s\n", doneArchives, totalArchives, progressPercent(doneArchives, totalArchives), archive.Name)
+				continue
+			}
+
+			filesExtracted, err := extractArchiveFile(archive.Path, dest)
+			if err != nil {
+				report.addProblem("extract errors", 1, archive.Name)
+				report.ExtractDuration = time.Since(extractStartedAt)
+				return finish(ExitRuntimeFail)
+			}
+
+			report.ExtractedArchives++
+			report.ExtractedFiles += filesExtracted
+			doneArchives++
+			writef(out, "Extraction progress: %d/%d (%d%%) extracted: %s\n", doneArchives, totalArchives, progressPercent(doneArchives, totalArchives), archive.Name)
+
+			entry := state.ArchiveState{Fingerprint: archive.Fingerprint, Extracted: true}
+			if deleteMode {
+				if err := removeFile(archive.Path); err != nil {
+					report.DeleteErrors = append(report.DeleteErrors, archive.Name)
+				} else {
+					report.DeletedZips++
+					entry.Deleted = true
+				}
+			}
+			st.Archives[archive.Name] = entry
+
+			if err := saveState(statePath, st); err != nil {
+				report.addProblem("state save errors", 1, err.Error())
+			}
+		}
+		report.ExtractDuration = time.Since(extractStartedAt)
 	}
-	report.ExtractDuration = time.Since(extractStartedAt)
 
 	writeLine(out, "Applying metadata and cleaning matched JSON...")
 	processStartedAt := time.Now()

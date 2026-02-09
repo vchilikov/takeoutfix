@@ -58,6 +58,31 @@ func ApplyDetailedWithRunner(
 			}
 			return result, fmt.Errorf("could not fix metadata for %s\nerror: %w\noutput: %s", mediaPath, retryErr, retryOutput)
 		}
+
+		// Corrupt EXIF (e.g. Samsung "Bad format (0) for ExifIFD entry 25",
+		// or "Error reading OtherImageStart data in IFD0"):
+		// strip all metadata, then re-apply from JSON.
+		if looksLikeCorruptExif(output) {
+			stripArgs := []string{"-all=", "-overwrite_original", patharg.Safe(outMediaPath)}
+			if _, stripErr := run(stripArgs); stripErr == nil {
+				retryArgs := buildExiftoolArgs(jsonPath, outMediaPath, includeCreateDate)
+				retryOutput, retryErr := run(retryArgs)
+				if retryErr == nil {
+					return result, nil
+				}
+				if includeCreateDate && strings.Contains(strings.ToLower(retryOutput), "filecreatedate") {
+					fallbackArgs := buildExiftoolArgs(jsonPath, outMediaPath, false)
+					fallbackOutput, fallbackErr := run(fallbackArgs)
+					if fallbackErr == nil {
+						result.CreateDateWarned = true
+						return result, nil
+					}
+					return result, fmt.Errorf("could not fix metadata for %s after stripping corrupt EXIF\nerror: %w\noutput: %s", mediaPath, fallbackErr, fallbackOutput)
+				}
+				return result, fmt.Errorf("could not fix metadata for %s after stripping corrupt EXIF\nerror: %w\noutput: %s", mediaPath, retryErr, retryOutput)
+			}
+		}
+
 		return result, fmt.Errorf("could not fix metadata for %s\nerror: %w\noutput: %s", mediaPath, err, output)
 	}
 
@@ -110,8 +135,13 @@ func buildExiftoolArgs(jsonPath string, outMediaPath string, includeCreateDate b
 	return args
 }
 
-func shouldWriteFileCreateDate() bool {
+var shouldWriteFileCreateDate = func() bool {
 	return runtime.GOOS == "darwin"
+}
+
+func looksLikeCorruptExif(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "bad format") || strings.Contains(lower, "error reading")
 }
 
 func hasSupportedExtension(path string) bool {

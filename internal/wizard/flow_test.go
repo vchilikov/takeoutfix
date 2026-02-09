@@ -3,6 +3,7 @@ package wizard
 import (
 	"bytes"
 	"io"
+	"os"
 	"testing"
 
 	"github.com/vchilikov/takeout-fix/internal/preflight"
@@ -123,7 +124,9 @@ func TestRunRerunAfterArchiveReplace(t *testing.T) {
 	discoverZips = func(string) ([]preflight.ZipArchive, error) {
 		return []preflight.ZipArchive{archive}, nil
 	}
+	diskCheckCalls := 0
 	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		diskCheckCalls++
 		return preflight.SpaceCheck{Enough: true, AvailableBytes: 10, RequiredBytes: 1}, nil
 	}
 
@@ -177,6 +180,9 @@ func TestRunRerunAfterArchiveReplace(t *testing.T) {
 	}
 	if extractCalls != 1 {
 		t.Fatalf("expected no additional extraction on rerun, got %d", extractCalls)
+	}
+	if diskCheckCalls != 1 {
+		t.Fatalf("expected disk check once (run 2 only), got %d", diskCheckCalls)
 	}
 }
 
@@ -244,7 +250,9 @@ func TestRunShowsExtractionProgressForSkippedAndExtracted(t *testing.T) {
 			TotalZipBytes:     60,
 		}
 	}
-	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+	var diskCheckArchives []preflight.ArchiveIntegrity
+	checkDiskSpace = func(_ string, archives []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		diskCheckArchives = append([]preflight.ArchiveIntegrity(nil), archives...)
 		return preflight.SpaceCheck{Enough: true, AvailableBytes: 1024, RequiredBytes: 128}, nil
 	}
 
@@ -274,6 +282,13 @@ func TestRunShowsExtractionProgressForSkippedAndExtracted(t *testing.T) {
 	}
 	if !bytes.Contains(output, []byte("Extraction progress: 2/2 (100%) extracted: b.zip")) {
 		t.Fatalf("expected extracted progress line, got:\n%s", out.String())
+	}
+
+	if len(diskCheckArchives) != 1 {
+		t.Fatalf("expected disk check for 1 pending archive, got %d", len(diskCheckArchives))
+	}
+	if diskCheckArchives[0].Archive.Name != "b.zip" {
+		t.Fatalf("expected disk check for b.zip, got %s", diskCheckArchives[0].Archive.Name)
 	}
 }
 
@@ -406,6 +421,144 @@ func TestRunPassesValidatedArchivesToDiskCheck(t *testing.T) {
 	}
 	if gotArchives[0].FileCount != 2 {
 		t.Fatalf("unexpected file count: want 2, got %d", gotArchives[0].FileCount)
+	}
+}
+
+func TestRunReprocessesWhenNoZipsButExtractedDirExists(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
+
+	processCalled := false
+	processTakeout = func(dir string, _ func(processor.ProgressEvent)) (processor.Report, error) {
+		processCalled = true
+		if !bytes.Contains([]byte(dir), []byte("takeoutfix-extracted")) {
+			t.Fatalf("expected process dir to contain takeoutfix-extracted, got %s", dir)
+		}
+		return processor.Report{}, nil
+	}
+
+	cwd := t.TempDir()
+	if err := os.MkdirAll(cwd+"/takeoutfix-extracted/subdir", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cwd+"/takeoutfix-extracted/subdir/photo.jpg", []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	code := Run(cwd, bytes.NewBufferString("\n"), &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success, got %d\n%s", code, out.String())
+	}
+	if !processCalled {
+		t.Fatalf("expected processTakeout to be called")
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Re-processing previously extracted data...")) {
+		t.Fatalf("expected re-processing message, got:\n%s", out.String())
+	}
+}
+
+func TestRunFailsWhenNoZipsAndNoExtractedDir(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
+
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		t.Fatalf("process should not be called when no zips and no extracted dir")
+		return processor.Report{}, nil
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	if code != ExitPreflightFail {
+		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("No ZIP archives found and no extracted data.")) {
+		t.Fatalf("expected no-data message, got:\n%s", out.String())
+	}
+}
+
+func TestRunFailsWhenExtractedPathIsFile(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
+
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		t.Fatalf("process should not be called when extracted path is a file")
+		return processor.Report{}, nil
+	}
+
+	cwd := t.TempDir()
+	if err := os.WriteFile(cwd+"/takeoutfix-extracted", []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	code := Run(cwd, bytes.NewBufferString("\n"), &out)
+	if code != ExitPreflightFail {
+		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("not a directory")) {
+		t.Fatalf("expected not-a-directory message, got:\n%s", out.String())
+	}
+}
+
+func TestRunSkipsDiskCheckWhenAllArchivesExtracted(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) {
+		return []preflight.ZipArchive{
+			{Name: "a.zip", Path: "/tmp/a.zip", Fingerprint: "f1"},
+			{Name: "b.zip", Path: "/tmp/b.zip", Fingerprint: "f2"},
+		}, nil
+	}
+	validateAll = func(zips []preflight.ZipArchive) preflight.IntegritySummary {
+		return preflight.IntegritySummary{
+			Checked: []preflight.ArchiveIntegrity{
+				{Archive: zips[0], FileCount: 1, UncompressedBytes: 100},
+				{Archive: zips[1], FileCount: 1, UncompressedBytes: 200},
+			},
+			TotalUncompressed: 300,
+			TotalZipBytes:     60,
+		}
+	}
+
+	diskCheckCalled := false
+	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		diskCheckCalled = true
+		return preflight.SpaceCheck{Enough: true}, nil
+	}
+
+	shouldSkip = func(_ state.RunState, _ string, _ string) bool { return true }
+	loadState = func(string) (state.RunState, error) { return state.New(), nil }
+	saveState = func(string, state.RunState) error { return nil }
+	extractArchiveFile = func(string, string) (int, error) {
+		t.Fatalf("extract should not be called when all archives are skipped")
+		return 0, nil
+	}
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		return processor.Report{}, nil
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success, got %d\n%s", code, out.String())
+	}
+	if diskCheckCalled {
+		t.Fatalf("expected disk check to be skipped when all archives are already extracted")
+	}
+	if bytes.Contains(out.Bytes(), []byte("Checking available disk space...")) {
+		t.Fatalf("expected no disk check in output, got:\n%s", out.String())
 	}
 }
 
