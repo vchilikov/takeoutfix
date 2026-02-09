@@ -3,6 +3,7 @@ package wizard
 import (
 	"bytes"
 	"io"
+	"os"
 	"testing"
 
 	"github.com/vchilikov/takeout-fix/internal/preflight"
@@ -406,6 +407,65 @@ func TestRunPassesValidatedArchivesToDiskCheck(t *testing.T) {
 	}
 	if gotArchives[0].FileCount != 2 {
 		t.Fatalf("unexpected file count: want 2, got %d", gotArchives[0].FileCount)
+	}
+}
+
+func TestRunReprocessesWhenNoZipsButExtractedDirExists(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
+
+	processCalled := false
+	processTakeout = func(dir string, _ func(processor.ProgressEvent)) (processor.Report, error) {
+		processCalled = true
+		if !bytes.Contains([]byte(dir), []byte("takeoutfix-extracted")) {
+			t.Fatalf("expected process dir to contain takeoutfix-extracted, got %s", dir)
+		}
+		return processor.Report{}, nil
+	}
+
+	cwd := t.TempDir()
+	if err := os.MkdirAll(cwd+"/takeoutfix-extracted/subdir", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cwd+"/takeoutfix-extracted/subdir/photo.jpg", []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	code := Run(cwd, bytes.NewBufferString("\n"), &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success, got %d\n%s", code, out.String())
+	}
+	if !processCalled {
+		t.Fatalf("expected processTakeout to be called")
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Re-processing previously extracted data...")) {
+		t.Fatalf("expected re-processing message, got:\n%s", out.String())
+	}
+}
+
+func TestRunFailsWhenNoZipsAndNoExtractedDir(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
+
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		t.Fatalf("process should not be called when no zips and no extracted dir")
+		return processor.Report{}, nil
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	if code != ExitPreflightFail {
+		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("No ZIP archives found and no extracted data.")) {
+		t.Fatalf("expected no-data message, got:\n%s", out.String())
 	}
 }
 
