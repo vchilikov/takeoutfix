@@ -10,11 +10,12 @@ func TestGetJsonFile(t *testing.T) {
 	longMediaWithSuffix := strings.Repeat("b", 50) + "(2).jpg"
 
 	tests := []struct {
-		name      string
-		mediaFile string
-		jsonFiles map[string]struct{}
-		want      string
-		wantErr   bool
+		name       string
+		mediaFile  string
+		jsonFiles  map[string]struct{}
+		mediaFiles map[string]struct{}
+		want       string
+		wantErr    bool
 	}{
 		{
 			name:      "exact match",
@@ -86,7 +87,17 @@ func TestGetJsonFile(t *testing.T) {
 			name:      "idempotent after random suffix rename",
 			mediaFile: "IMG_0001-abcde.png",
 			jsonFiles: map[string]struct{}{"IMG_0001.jpg.json": {}},
-			want:      "IMG_0001.jpg.json",
+			mediaFiles: map[string]struct{}{
+				"IMG_0001-abcde.png": {},
+				"IMG_0001.png":       {},
+			},
+			want: "IMG_0001.jpg.json",
+		},
+		{
+			name:      "legitimate suffix without sibling does not fallback",
+			mediaFile: "IMG_0001-abcde.png",
+			jsonFiles: map[string]struct{}{"IMG_0001.jpg.json": {}},
+			wantErr:   true,
 		},
 		{
 			name:      "ambiguous basename fallback returns error",
@@ -146,7 +157,11 @@ func TestGetJsonFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getJsonFile(tt.mediaFile, tt.jsonFiles)
+			mediaFiles := tt.mediaFiles
+			if mediaFiles == nil {
+				mediaFiles = map[string]struct{}{tt.mediaFile: {}}
+			}
+			got, err := getJsonFile(tt.mediaFile, tt.jsonFiles, mediaFiles)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got none")

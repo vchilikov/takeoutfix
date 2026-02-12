@@ -2,58 +2,13 @@ package extract
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/vchilikov/takeout-fix/internal/preflight"
 )
-
-type Stats struct {
-	ArchivesExtracted int
-	ArchivesSkipped   int
-	FilesExtracted    int
-	DeletedZips       int
-	DeleteErrors      []string
-}
-
-func ExtractArchives(
-	zips []preflight.ZipArchive,
-	dest string,
-	shouldSkip func(preflight.ZipArchive) bool,
-	deleteAfter bool,
-) (Stats, error) {
-	stats := Stats{}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return stats, fmt.Errorf("mkdir dest: %w", err)
-	}
-
-	for _, archive := range zips {
-		if shouldSkip != nil && shouldSkip(archive) {
-			stats.ArchivesSkipped++
-			continue
-		}
-
-		files, err := extractOne(archive.Path, dest)
-		if err != nil {
-			return stats, fmt.Errorf("extract %s: %w", archive.Name, err)
-		}
-		stats.ArchivesExtracted++
-		stats.FilesExtracted += files
-
-		if deleteAfter {
-			if err := os.Remove(archive.Path); err != nil {
-				stats.DeleteErrors = append(stats.DeleteErrors, fmt.Sprintf("%s: %v", archive.Name, err))
-			} else {
-				stats.DeletedZips++
-			}
-		}
-	}
-
-	return stats, nil
-}
 
 func ExtractArchive(zipPath string, dest string) (int, error) {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
@@ -76,6 +31,9 @@ func extractOne(zipPath string, dest string) (files int, err error) {
 	for _, f := range r.File {
 		target, err := safeJoin(dest, f.Name)
 		if err != nil {
+			return files, err
+		}
+		if err := ensureNoSymlinkComponents(dest, target); err != nil {
 			return files, err
 		}
 
@@ -131,4 +89,45 @@ func safeJoin(base string, name string) (string, error) {
 	}
 
 	return target, nil
+}
+
+func ensureNoSymlinkComponents(base string, target string) error {
+	cleanBase := filepath.Clean(base)
+	cleanTarget := filepath.Clean(target)
+
+	if err := ensureExistingPathNotSymlink(cleanBase); err != nil {
+		return err
+	}
+
+	rel, err := filepath.Rel(cleanBase, cleanTarget)
+	if err != nil {
+		return fmt.Errorf("invalid zip entry path (symlink component): %w", err)
+	}
+	if rel == "." {
+		return nil
+	}
+
+	current := cleanBase
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		current = filepath.Join(current, part)
+		if err := ensureExistingPathNotSymlink(current); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ensureExistingPathNotSymlink(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("invalid zip entry path (symlink component): %s", path)
+	}
+	return nil
 }

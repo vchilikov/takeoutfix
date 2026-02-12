@@ -77,15 +77,32 @@ TakeoutFix runs in a guided sequence and prints clear stages:
 
 If any archive is corrupt, processing stops before extraction.
 
+Status in the final summary:
+
+- `SUCCESS` - processing finished without hard file-level errors.
+- `PARTIAL_SUCCESS` - some media failed metadata/extension processing. Re-run is recommended after fixing issues.
+
 ## Output: What to Upload
 
 After a successful run (`Status: SUCCESS`):
 
 - Processed files are in `./takeoutfix-extracted`.
 - Upload `./takeoutfix-extracted/Takeout` to your new cloud storage.
-- Original Takeout ZIP files are auto-removed right after successful extraction.
+- Original Takeout ZIP files are auto-removed according to the deletion mode below.
+
+ZIP deletion mode:
+
+- Normal mode (enough free disk): ZIPs are deleted only after successful metadata processing.
+- Low-space mode (`required` does not fit, but `required with auto-delete` fits): ZIPs are deleted immediately after extraction.
+- If final status is `PARTIAL_SUCCESS` in normal mode, ZIPs are kept for rerun.
 
 Technical state is saved in `./.takeoutfix/state.json` so reruns can skip unchanged archives.
+
+Exit codes:
+
+- `0` - `SUCCESS`
+- `2` - preflight failure
+- `3` - runtime failure, including `PARTIAL_SUCCESS`
 
 ## Cloud Upload Guides
 
@@ -108,6 +125,8 @@ Yandex Disk Russian guide: [docs/clouds/yandex-disk.ru.md](docs/clouds/yandex-di
   - Run the one-liner installer command for your OS, or install `exiftool` manually and rerun.
 - `Not enough disk space even with auto-delete enabled.`
   - Free up disk space and rerun.
+- `Status: PARTIAL_SUCCESS`
+  - Some files could not be processed. Fix the reported errors and rerun TakeoutFix.
 
 ## Developer Appendix (Optional)
 

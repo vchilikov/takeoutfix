@@ -3,6 +3,7 @@ package extensions
 import (
 	crand "crypto/rand"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,16 +148,33 @@ func getNewFileName(baseFileName string, newExtension string) (string, error) {
 }
 
 func generateRandomSuffix() (string, error) {
+	return generateRandomSuffixFromReader(crand.Reader)
+}
+
+func generateRandomSuffixFromReader(randomSource io.Reader) (string, error) {
+	if randomSource == nil {
+		return "", fmt.Errorf("nil random source")
+	}
+
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, 5)
-	randBytes := make([]byte, len(b))
-	if _, err := crand.Read(randBytes); err != nil {
-		return "", err
+	const suffixLength = 5
+	const unbiasedMaxByte = byte(251) // 251 = 255 - (256 % len(charset)).
+
+	suffix := make([]byte, suffixLength)
+	randomByte := make([]byte, 1)
+
+	for i := 0; i < suffixLength; {
+		if _, err := io.ReadFull(randomSource, randomByte); err != nil {
+			return "", err
+		}
+		if randomByte[0] > unbiasedMaxByte {
+			continue
+		}
+		suffix[i] = charset[int(randomByte[0])%len(charset)]
+		i++
 	}
-	for i := range b {
-		b[i] = charset[int(randBytes[i])%len(charset)]
-	}
-	return string(b), nil
+
+	return string(suffix), nil
 }
 
 func doesFileExist(filePath string) bool {

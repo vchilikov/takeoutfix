@@ -16,7 +16,7 @@ const supplementalFull = ".supplemental-metadata"
 
 var trailingNumberSuffixRe = regexp.MustCompile(`\(\d+\)$`)
 
-func getJsonFile(mediaFile string, jsonFiles map[string]struct{}) (string, error) {
+func getJsonFile(mediaFile string, jsonFiles map[string]struct{}, mediaFiles map[string]struct{}) (string, error) {
 	if jsonFile, ok := findJSONByStem(mediaFile, jsonFiles); ok {
 		return jsonFile, nil
 	}
@@ -27,7 +27,7 @@ func getJsonFile(mediaFile string, jsonFiles map[string]struct{}) (string, error
 	}
 
 	if strings.Contains(mediaFile, "-edited") {
-		return getJsonFile(strings.Replace(mediaFile, "-edited", "", 1), jsonFiles)
+		return getJsonFile(strings.Replace(mediaFile, "-edited", "", 1), jsonFiles, mediaFiles)
 	}
 
 	if numberSuffixRe.MatchString(mediaFile) {
@@ -72,12 +72,14 @@ func getJsonFile(mediaFile string, jsonFiles map[string]struct{}) (string, error
 		}
 	}
 
-	if jsonFile, ok := findJSONByBasename(mediaFile, jsonFiles); ok {
+	if jsonFile, ok := findJSONByBasename(mediaFile, jsonFiles, false); ok {
 		return jsonFile, nil
 	}
 
-	if jsonFile, ok := findJSONByBasename(removeRandomSuffix(mediaFile), jsonFiles); ok {
-		return jsonFile, nil
+	if shouldUseRandomSuffixFallback(mediaFile, mediaFiles) {
+		if jsonFile, ok := findJSONByBasename(mediaFile, jsonFiles, true); ok {
+			return jsonFile, nil
+		}
 	}
 
 	return "", fmt.Errorf("json file not found for %s", mediaFile)
@@ -121,12 +123,12 @@ func findJSONCaseInsensitive(name string, jsonFiles map[string]struct{}) (string
 	return "", false
 }
 
-func findJSONByBasename(mediaFile string, jsonFiles map[string]struct{}) (string, bool) {
-	mediaKey := normalizeMediaLookupKey(mediaFile)
+func findJSONByBasename(mediaFile string, jsonFiles map[string]struct{}, stripRandomSuffix bool) (string, bool) {
+	mediaKey := normalizeMediaLookupKeyWithOptions(mediaFile, stripRandomSuffix)
 	var matches []string
 
 	for jsonFile := range jsonFiles {
-		jsonKey := normalizeJSONKey(jsonFile)
+		jsonKey := normalizeJSONKeyWithOptions(jsonFile, stripRandomSuffix)
 		if jsonKey == "" {
 			continue
 		}
@@ -150,6 +152,10 @@ func removeRandomSuffix(mediaFile string) string {
 }
 
 func normalizeJSONKey(jsonFile string) string {
+	return normalizeJSONKeyWithOptions(jsonFile, true)
+}
+
+func normalizeJSONKeyWithOptions(jsonFile string, stripRandomSuffix bool) string {
 	name := strings.ToLower(jsonFile)
 	if !strings.HasSuffix(name, ".json") {
 		return ""
@@ -157,7 +163,7 @@ func normalizeJSONKey(jsonFile string) string {
 	name = strings.TrimSuffix(name, ".json")
 	name = trailingNumberSuffixRe.ReplaceAllString(name, "")
 	name = stripSupplementalSuffix(name)
-	return normalizeNameKey(name)
+	return normalizeNameKeyWithOptions(name, stripRandomSuffix)
 }
 
 func isSupplementalPrefix(s string) bool {
@@ -179,20 +185,45 @@ func stripSupplementalSuffix(name string) string {
 }
 
 func normalizeMediaLookupKey(mediaFile string) string {
+	return normalizeMediaLookupKeyWithOptions(mediaFile, true)
+}
+
+func normalizeMediaLookupKeyWithOptions(mediaFile string, stripRandomSuffix bool) string {
 	name := strings.ToLower(mediaFile)
 	ext := filepath.Ext(name)
 	if ext != "" {
 		name = strings.TrimSuffix(name, ext)
 	}
-	return normalizeNameKey(name)
+	return normalizeNameKeyWithOptions(name, stripRandomSuffix)
 }
 
-func normalizeNameKey(name string) string {
+func normalizeNameKeyWithOptions(name string, stripRandomSuffix bool) string {
 	name = strings.Replace(name, "-edited", "", 1)
-	name = randomSuffixRe.ReplaceAllString(name, "")
+	if stripRandomSuffix {
+		name = randomSuffixRe.ReplaceAllString(name, "")
+	}
 	name = trailingNumberSuffixRe.ReplaceAllString(name, "")
 	name = stripKnownMediaExtension(name)
 	return name
+}
+
+func shouldUseRandomSuffixFallback(mediaFile string, mediaFiles map[string]struct{}) bool {
+	if len(mediaFiles) == 0 {
+		return false
+	}
+
+	base := strings.TrimSuffix(mediaFile, filepath.Ext(mediaFile))
+	if !randomSuffixRe.MatchString(base) {
+		return false
+	}
+
+	sibling := removeRandomSuffix(mediaFile)
+	if sibling == mediaFile {
+		return false
+	}
+
+	_, ok := mediaFiles[sibling]
+	return ok
 }
 
 func stripKnownMediaExtension(name string) string {

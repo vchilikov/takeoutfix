@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/vchilikov/takeout-fix/internal/mediaext"
 )
 
 type MediaScanResult struct {
@@ -12,61 +14,6 @@ type MediaScanResult struct {
 	MissingJSON   []string
 	UnusedJSON    []string
 	AmbiguousJSON map[string][]string
-}
-
-// GetAlbums returns a list of directories in the provided path.
-// It is used to get the list of albums in the Google Photos export directory.
-func GetAlbums(path string) ([]string, error) {
-	var albums []string
-	files, err := os.ReadDir(path)
-	if err != nil {
-		return albums, err
-	}
-
-	for _, file := range files {
-		if file.IsDir() {
-			albums = append(albums, file.Name())
-		}
-	}
-
-	return albums, nil
-}
-
-// GetMedia returns media files with their matching JSON metadata and
-// reports files that could not be matched.
-func GetMedia(albumPath string) (MediaScanResult, error) {
-	result := MediaScanResult{
-		Pairs:         make(map[string]string),
-		AmbiguousJSON: make(map[string][]string),
-	}
-
-	entries, err := os.ReadDir(albumPath)
-	if err != nil {
-		return result, err
-	}
-
-	jsonFiles, mediaFiles := classifyFiles(entries)
-	usedJsonFiles := make(map[string]struct{})
-	mediaNames := make([]string, 0, len(mediaFiles))
-	for mediaFile := range mediaFiles {
-		mediaNames = append(mediaNames, mediaFile)
-	}
-	sort.Strings(mediaNames)
-
-	for _, mediaFile := range mediaNames {
-		jsonFile, err := getJsonFile(mediaFile, jsonFiles)
-		if err != nil {
-			result.MissingJSON = append(result.MissingJSON, mediaFile)
-			continue
-		}
-
-		usedJsonFiles[jsonFile] = struct{}{}
-		result.Pairs[mediaFile] = jsonFile
-	}
-
-	result.UnusedJSON = checkUnusedJson(jsonFiles, usedJsonFiles)
-
-	return result, nil
 }
 
 // ScanTakeout recursively scans a Takeout root and matches media files with
@@ -128,9 +75,13 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	dirs := sortedDirs(mediaByDir)
 	for _, dir := range dirs {
 		dirJSON := jsonByDir[dir]
+		dirMediaSet := make(map[string]struct{}, len(mediaByDir[dir]))
+		for _, mediaFile := range mediaByDir[dir] {
+			dirMediaSet[mediaFile] = struct{}{}
+		}
 		for _, mediaFile := range mediaByDir[dir] {
 			mediaRel := joinRelPath(dir, mediaFile)
-			jsonFile, err := getJsonFile(mediaFile, dirJSON)
+			jsonFile, err := getJsonFile(mediaFile, dirJSON, dirMediaSet)
 			if err != nil {
 				unresolvedMedia = append(unresolvedMedia, mediaRel)
 				continue
@@ -285,10 +236,12 @@ func isJSONFile(name string) bool {
 	return strings.EqualFold(filepath.Ext(name), ".json")
 }
 
-func isXMPFile(name string) bool {
-	return strings.EqualFold(filepath.Ext(name), ".xmp")
-}
-
 func isMediaCandidate(name string) bool {
-	return !isJSONFile(name) && !isXMPFile(name)
+	ext := filepath.Ext(name)
+	for _, supportedExt := range mediaext.Supported {
+		if strings.EqualFold(ext, supportedExt) {
+			return true
+		}
+	}
+	return false
 }

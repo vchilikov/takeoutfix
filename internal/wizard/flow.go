@@ -35,7 +35,7 @@ var (
 	removeFile         = os.Remove
 )
 
-func Run(cwd string, _ io.Reader, out io.Writer) int {
+func Run(cwd string, out io.Writer) int {
 	runStartedAt := time.Now()
 	report := Report{Status: "FAILED"}
 	finish := func(code int) int {
@@ -63,6 +63,10 @@ func Run(cwd string, _ io.Reader, out io.Writer) int {
 	writeLine(out, "Dependencies are OK.")
 
 	dest := filepath.Join(cwd, "takeoutfix-extracted")
+	statePath := filepath.Join(cwd, ".takeoutfix", "state.json")
+	st := state.New()
+	lowSpaceDelete := false
+	deferredDelete := make([]preflight.ZipArchive, 0)
 
 	writeLine(out, "Scanning ZIP archives in current folder...")
 	zipScanStartedAt := time.Now()
@@ -106,8 +110,7 @@ func Run(cwd string, _ io.Reader, out io.Writer) int {
 		}
 		writeLine(out, "All ZIP archives are valid.")
 
-		statePath := filepath.Join(cwd, ".takeoutfix", "state.json")
-		st, err := loadState(statePath)
+		st, err = loadState(statePath)
 		if err != nil {
 			report.addProblem("state load errors", 1, err.Error())
 			st = state.New()
@@ -120,7 +123,7 @@ func Run(cwd string, _ io.Reader, out io.Writer) int {
 			}
 		}
 
-		autoDelete := true
+		report.AutoDelete = true
 		if len(pending) > 0 {
 			writeLine(out, "Checking available disk space...")
 			diskCheckStartedAt := time.Now()
@@ -143,9 +146,11 @@ func Run(cwd string, _ io.Reader, out io.Writer) int {
 				writeLine(out, "Not enough disk space even with auto-delete enabled.")
 				return finish(ExitPreflightFail)
 			}
+			if !space.Enough {
+				lowSpaceDelete = true
+				writeLine(out, "Low-space mode enabled: ZIP archives will be deleted immediately after extraction.")
+			}
 		}
-		report.AutoDelete = autoDelete
-
 		writef(out, "Extracting archives into: %s\n", dest)
 		extractStartedAt := time.Now()
 		totalArchives := len(zips)
@@ -155,13 +160,14 @@ func Run(cwd string, _ io.Reader, out io.Writer) int {
 				entry := st.Archives[archive.Name]
 				entry.Fingerprint = archive.Fingerprint
 				entry.Extracted = true
-
-				if err := removeFile(archive.Path); err != nil {
-					report.DeleteErrors = append(report.DeleteErrors, archive.Name)
-					entry.Deleted = false
+				if lowSpaceDelete {
+					if !entry.Deleted {
+						entry.Deleted = deleteArchiveZip(&report, archive)
+					}
 				} else {
-					report.DeletedZips++
-					entry.Deleted = true
+					if !entry.Deleted {
+						deferredDelete = append(deferredDelete, archive)
+					}
 				}
 				st.Archives[archive.Name] = entry
 				if err := saveState(statePath, st); err != nil {
@@ -187,12 +193,11 @@ func Run(cwd string, _ io.Reader, out io.Writer) int {
 			writef(out, "Extraction progress: %d/%d (%d%%) extracted: %s\n", doneArchives, totalArchives, progressPercent(doneArchives, totalArchives), archive.Name)
 
 			entry := state.ArchiveState{Fingerprint: archive.Fingerprint, Extracted: true}
-			if err := removeFile(archive.Path); err != nil {
-				report.DeleteErrors = append(report.DeleteErrors, archive.Name)
-				entry.Deleted = false
+			if lowSpaceDelete {
+				entry.Deleted = deleteArchiveZip(&report, archive)
 			} else {
-				report.DeletedZips++
-				entry.Deleted = true
+				entry.Deleted = false
+				deferredDelete = append(deferredDelete, archive)
 			}
 			st.Archives[archive.Name] = entry
 
@@ -240,6 +245,29 @@ func Run(cwd string, _ io.Reader, out io.Writer) int {
 		report.addProblem(category, count, procReport.ProblemSamples[category]...)
 	}
 
+	if hasHardProcessingProblems(procReport.ProblemCounts) {
+		report.Status = "PARTIAL_SUCCESS"
+		if !lowSpaceDelete {
+			writeLine(out, "Hard processing errors detected. Keeping ZIP archives for rerun.")
+		}
+		return finish(ExitRuntimeFail)
+	}
+
+	if !lowSpaceDelete {
+		for _, archive := range deferredDelete {
+			entry := st.Archives[archive.Name]
+			entry.Fingerprint = archive.Fingerprint
+			entry.Extracted = true
+			if !entry.Deleted {
+				entry.Deleted = deleteArchiveZip(&report, archive)
+			}
+			st.Archives[archive.Name] = entry
+			if err := saveState(statePath, st); err != nil {
+				report.addProblem("state save errors", 1, err.Error())
+			}
+		}
+	}
+
 	report.Status = "SUCCESS"
 	return finish(ExitSuccess)
 }
@@ -255,4 +283,23 @@ func progressPercent(done int, total int) int {
 		done = total
 	}
 	return done * 100 / total
+}
+
+func hasHardProcessingProblems(problemCounts map[string]int) bool {
+	if len(problemCounts) == 0 {
+		return false
+	}
+	return problemCounts["extension errors"] > 0 || problemCounts["metadata errors"] > 0
+}
+
+func deleteArchiveZip(report *Report, archive preflight.ZipArchive) bool {
+	if err := removeFile(archive.Path); err != nil {
+		if os.IsNotExist(err) {
+			return true
+		}
+		report.DeleteErrors = append(report.DeleteErrors, archive.Name)
+		return false
+	}
+	report.DeletedZips++
+	return true
 }

@@ -18,8 +18,8 @@ func TestHasSupportedExtension(t *testing.T) {
 	if !hasSupportedExtension("photo.TIFF") {
 		t.Fatalf("expected TIFF extension to be supported")
 	}
-	if hasSupportedExtension("photo.webp") {
-		t.Fatalf("expected WEBP extension to be unsupported")
+	if !hasSupportedExtension("photo.webp") {
+		t.Fatalf("expected WEBP extension to be supported")
 	}
 }
 

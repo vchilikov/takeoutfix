@@ -5,7 +5,8 @@ import (
 	"strings"
 )
 
-// Safe returns a path argument that cannot be interpreted as an option by tools.
+// Safe prevents option-style interpretation for paths starting with '-'.
+// It does not escape protocol delimiters such as newline bytes.
 func Safe(path string) string {
 	if strings.HasPrefix(path, "-") {
 		return "." + string(filepath.Separator) + path

@@ -19,7 +19,7 @@ func main() {
 		os.Exit(wizard.ExitRuntimeFail)
 	}
 
-	code := wizard.Run(workDir, os.Stdin, os.Stdout)
+	code := wizard.Run(workDir, os.Stdout)
 	os.Exit(code)
 }
 

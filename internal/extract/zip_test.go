@@ -4,52 +4,92 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
-
-	"github.com/vchilikov/takeout-fix/internal/preflight"
 )
 
-func TestExtractArchivesSkipAndDelete(t *testing.T) {
+func TestExtractArchiveExtractsFiles(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "a.zip")
 	if err := writeZip(zipPath, map[string]string{"one.txt": "1", "two.txt": "2"}); err != nil {
 		t.Fatalf("write zip: %v", err)
 	}
 
-	info, _ := os.Stat(zipPath)
-	archive := preflight.ZipArchive{
-		Name:        "a.zip",
-		Path:        zipPath,
-		SizeBytes:   uint64(info.Size()),
-		ModTime:     info.ModTime(),
-		Fingerprint: preflight.Fingerprint(uint64(info.Size()), info.ModTime()),
-	}
-
 	dest := filepath.Join(dir, "out")
-	stats, err := ExtractArchives([]preflight.ZipArchive{archive}, dest, nil, true)
+	files, err := ExtractArchive(zipPath, dest)
 	if err != nil {
-		t.Fatalf("ExtractArchives error: %v", err)
+		t.Fatalf("ExtractArchive error: %v", err)
 	}
-	if stats.ArchivesExtracted != 1 || stats.FilesExtracted != 2 || stats.DeletedZips != 1 {
-		t.Fatalf("unexpected stats: %+v", stats)
+	if files != 2 {
+		t.Fatalf("expected 2 extracted files, got %d", files)
 	}
-	if _, err := os.Stat(zipPath); !os.IsNotExist(err) {
-		t.Fatalf("expected zip to be deleted")
-	}
-
-	stats, err = ExtractArchives([]preflight.ZipArchive{archive}, dest, func(preflight.ZipArchive) bool { return true }, false)
-	if err != nil {
-		t.Fatalf("ExtractArchives skip error: %v", err)
-	}
-	if stats.ArchivesSkipped != 1 {
-		t.Fatalf("expected one skipped archive, got %+v", stats)
+	for _, name := range []string{"one.txt", "two.txt"} {
+		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
+			t.Fatalf("expected extracted file %s: %v", name, err)
+		}
 	}
 }
 
 func TestSafeJoinBlocksTraversal(t *testing.T) {
 	if _, err := safeJoin("/tmp/base", "../escape"); err == nil {
 		t.Fatalf("expected traversal error")
+	}
+}
+
+func TestExtractArchiveRejectsSymlinkComponent(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "a.zip")
+	if err := writeZip(zipPath, map[string]string{"link/file.txt": "1"}); err != nil {
+		t.Fatalf("write zip: %v", err)
+	}
+
+	dest := filepath.Join(dir, "out")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatalf("mkdir dest: %v", err)
+	}
+	outside := filepath.Join(dir, "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dest, "link")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	_, err := ExtractArchive(zipPath, dest)
+	if err == nil {
+		t.Fatalf("expected symlink component error")
+	}
+	if !strings.Contains(err.Error(), "symlink component") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExtractArchiveRejectsSymlinkTargetFile(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "a.zip")
+	if err := writeZip(zipPath, map[string]string{"file.txt": "1"}); err != nil {
+		t.Fatalf("write zip: %v", err)
+	}
+
+	dest := filepath.Join(dir, "out")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatalf("mkdir dest: %v", err)
+	}
+	outsideFile := filepath.Join(dir, "outside.txt")
+	if err := os.WriteFile(outsideFile, []byte("outside"), 0o644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(dest, "file.txt")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	_, err := ExtractArchive(zipPath, dest)
+	if err == nil {
+		t.Fatalf("expected symlink component error")
+	}
+	if !strings.Contains(err.Error(), "symlink component") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

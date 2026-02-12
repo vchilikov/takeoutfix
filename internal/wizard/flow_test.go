@@ -38,7 +38,7 @@ func TestRunStopsOnCorruptZip(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
@@ -60,7 +60,7 @@ func TestRunFailsWhenDependenciesAreMissing(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
@@ -121,7 +121,7 @@ func TestRunRerunAfterArchiveReplace(t *testing.T) {
 	}
 
 	var out1 bytes.Buffer
-	if code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out1); code != ExitPreflightFail {
+	if code := Run(t.TempDir(), &out1); code != ExitPreflightFail {
 		t.Fatalf("first run expected preflight fail, got %d", code)
 	}
 	if extractCalls != 0 {
@@ -130,7 +130,7 @@ func TestRunRerunAfterArchiveReplace(t *testing.T) {
 
 	integrityCorrupt = false
 	var out2 bytes.Buffer
-	if code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out2); code != ExitSuccess {
+	if code := Run(t.TempDir(), &out2); code != ExitSuccess {
 		t.Fatalf("second run expected success, got %d\n%s", code, out2.String())
 	}
 	if extractCalls != 1 {
@@ -138,7 +138,7 @@ func TestRunRerunAfterArchiveReplace(t *testing.T) {
 	}
 
 	var out3 bytes.Buffer
-	if code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out3); code != ExitSuccess {
+	if code := Run(t.TempDir(), &out3); code != ExitSuccess {
 		t.Fatalf("third run expected success, got %d", code)
 	}
 	if extractCalls != 1 {
@@ -157,7 +157,7 @@ func TestRunAlwaysUsesEnglishWithoutLanguagePrompt(t *testing.T) {
 	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString(""), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail due to no archives, got %d", code)
 	}
@@ -204,12 +204,15 @@ func TestRunContinuesWhenOnlyAutoDeleteFits(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString(""), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
 	if !bytes.Contains(out.Bytes(), []byte("required with auto-delete")) {
 		t.Fatalf("expected auto-delete disk line, got:\n%s", out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Low-space mode enabled")) {
+		t.Fatalf("expected low-space mode warning, got:\n%s", out.String())
 	}
 	if bytes.Contains(out.Bytes(), []byte("Enable delete-mode")) {
 		t.Fatalf("did not expect interactive delete-mode prompt, got:\n%s", out.String())
@@ -248,7 +251,7 @@ func TestRunFailsWhenAutoDeleteIsInsufficient(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString(""), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
@@ -265,7 +268,7 @@ func TestRunAutoLanguageEnglishWithoutPrompt(t *testing.T) {
 	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString(""), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail due to no archives, got %d", code)
 	}
@@ -320,7 +323,7 @@ func TestRunShowsExtractionProgressForSkippedAndExtracted(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
@@ -371,7 +374,7 @@ func TestRunShowsThrottledProcessingProgress(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
@@ -417,7 +420,7 @@ func TestRunShowsEmptyProcessingProgress(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
@@ -457,7 +460,7 @@ func TestRunPassesValidatedArchivesToDiskCheck(t *testing.T) {
 		return processor.Report{}, nil
 	}
 
-	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &bytes.Buffer{})
+	code := Run(t.TempDir(), &bytes.Buffer{})
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d", code)
 	}
@@ -498,7 +501,7 @@ func TestRunReprocessesWhenNoZipsButExtractedDirExists(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(cwd, bytes.NewBufferString("\n"), &out)
+	code := Run(cwd, &out)
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
@@ -523,7 +526,7 @@ func TestRunFailsWhenNoZipsAndNoExtractedDir(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
@@ -550,7 +553,7 @@ func TestRunFailsWhenExtractedPathIsFile(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(cwd, bytes.NewBufferString("\n"), &out)
+	code := Run(cwd, &out)
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
@@ -608,7 +611,7 @@ func TestRunSkipsDiskCheckWhenAllArchivesExtracted(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := Run(t.TempDir(), bytes.NewBufferString("\n"), &out)
+	code := Run(t.TempDir(), &out)
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
@@ -632,6 +635,256 @@ func TestRunSkipsDiskCheckWhenAllArchivesExtracted(t *testing.T) {
 		if !entry.Extracted || !entry.Deleted {
 			t.Fatalf("expected state entry for %s to be extracted+deleted, got %+v", name, entry)
 		}
+	}
+}
+
+func TestRunSkipAlreadyDeletedArchiveDoesNotDeleteAgain(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) {
+		return []preflight.ZipArchive{{Name: "a.zip", Path: "/tmp/a.zip", Fingerprint: "f1"}}, nil
+	}
+	validateAll = func(zips []preflight.ZipArchive) preflight.IntegritySummary {
+		return preflight.IntegritySummary{
+			Checked:           []preflight.ArchiveIntegrity{{Archive: zips[0], FileCount: 1, UncompressedBytes: 100}},
+			TotalUncompressed: 100,
+			TotalZipBytes:     20,
+		}
+	}
+	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		t.Fatalf("disk check should not run when all archives are skipped")
+		return preflight.SpaceCheck{}, nil
+	}
+
+	stored := state.New()
+	stored.Archives["a.zip"] = state.ArchiveState{
+		Fingerprint: "f1",
+		Extracted:   true,
+		Deleted:     true,
+	}
+	loadState = func(string) (state.RunState, error) { return stored, nil }
+	saveState = func(_ string, st state.RunState) error {
+		stored = st
+		return nil
+	}
+
+	removeCalls := 0
+	removeFile = func(string) error {
+		removeCalls++
+		return nil
+	}
+	extractArchiveFile = func(string, string) (int, error) {
+		t.Fatalf("extract should not be called when archive is skipped")
+		return 0, nil
+	}
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		return processor.Report{}, nil
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success, got %d\n%s", code, out.String())
+	}
+	if removeCalls != 0 {
+		t.Fatalf("expected no delete attempts for already deleted archive, got %d", removeCalls)
+	}
+	if bytes.Contains(out.Bytes(), []byte("zip delete errors")) {
+		t.Fatalf("did not expect zip delete errors, got:\n%s", out.String())
+	}
+	if entry := stored.Archives["a.zip"]; !entry.Deleted {
+		t.Fatalf("expected archive to remain marked deleted, got %+v", entry)
+	}
+}
+
+func TestRunMissingZipDuringDeleteDoesNotReportError(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) {
+		return []preflight.ZipArchive{{Name: "a.zip", Path: "/tmp/a.zip", Fingerprint: "f1"}}, nil
+	}
+	validateAll = func(zips []preflight.ZipArchive) preflight.IntegritySummary {
+		return preflight.IntegritySummary{
+			Checked:           []preflight.ArchiveIntegrity{{Archive: zips[0], FileCount: 1, UncompressedBytes: 100}},
+			TotalUncompressed: 100,
+			TotalZipBytes:     20,
+		}
+	}
+	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		return preflight.SpaceCheck{
+			AvailableBytes:          90,
+			RequiredBytes:           120,
+			RequiredWithDeleteBytes: 80,
+			Enough:                  false,
+			EnoughWithDelete:        true,
+		}, nil
+	}
+
+	stored := state.New()
+	loadState = func(string) (state.RunState, error) { return stored, nil }
+	saveState = func(_ string, st state.RunState) error {
+		stored = st
+		return nil
+	}
+
+	removeFile = func(string) error { return os.ErrNotExist }
+	extractArchiveFile = func(string, string) (int, error) { return 1, nil }
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		return processor.Report{}, nil
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success, got %d\n%s", code, out.String())
+	}
+	if bytes.Contains(out.Bytes(), []byte("zip delete errors")) {
+		t.Fatalf("did not expect zip delete errors for missing files, got:\n%s", out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("deleted zips=0")) {
+		t.Fatalf("expected deleted zips=0 when file is already absent, got:\n%s", out.String())
+	}
+	entry, ok := stored.Archives["a.zip"]
+	if !ok {
+		t.Fatalf("expected state entry for a.zip")
+	}
+	if !entry.Deleted {
+		t.Fatalf("expected archive to be marked deleted when zip file is missing, got %+v", entry)
+	}
+}
+
+func TestRunPartialSuccessOnHardProcessingErrorsKeepsZipsInSafeMode(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) {
+		return []preflight.ZipArchive{{Name: "a.zip", Path: "/tmp/a.zip", Fingerprint: "f1"}}, nil
+	}
+	validateAll = func(zips []preflight.ZipArchive) preflight.IntegritySummary {
+		return preflight.IntegritySummary{
+			Checked:           []preflight.ArchiveIntegrity{{Archive: zips[0], FileCount: 1, UncompressedBytes: 100}},
+			TotalUncompressed: 100,
+			TotalZipBytes:     20,
+		}
+	}
+	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		return preflight.SpaceCheck{
+			AvailableBytes:          200,
+			RequiredBytes:           120,
+			RequiredWithDeleteBytes: 80,
+			Enough:                  true,
+			EnoughWithDelete:        true,
+		}, nil
+	}
+
+	stored := state.New()
+	loadState = func(string) (state.RunState, error) { return stored, nil }
+	saveState = func(_ string, st state.RunState) error {
+		stored = st
+		return nil
+	}
+
+	removeCalled := false
+	removeFile = func(string) error {
+		removeCalled = true
+		return nil
+	}
+	extractArchiveFile = func(string, string) (int, error) { return 1, nil }
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		return processor.Report{
+			ProblemCounts: map[string]int{
+				"metadata errors": 1,
+			},
+			ProblemSamples: map[string][]string{
+				"metadata errors": []string{"Takeout/photo.jpg"},
+			},
+		}, nil
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), &out)
+	if code != ExitRuntimeFail {
+		t.Fatalf("expected runtime fail on hard processing errors, got %d\n%s", code, out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Status: PARTIAL_SUCCESS")) {
+		t.Fatalf("expected PARTIAL_SUCCESS status, got:\n%s", out.String())
+	}
+	if removeCalled {
+		t.Fatalf("did not expect zip deletion in safe mode on hard errors")
+	}
+	entry, ok := stored.Archives["a.zip"]
+	if !ok {
+		t.Fatalf("expected state entry for a.zip")
+	}
+	if entry.Deleted {
+		t.Fatalf("expected a.zip to remain undeleted on hard processing errors")
+	}
+}
+
+func TestRunWarningOnlyProblemsStillSucceed(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) {
+		return []preflight.ZipArchive{{Name: "a.zip", Path: "/tmp/a.zip", Fingerprint: "f1"}}, nil
+	}
+	validateAll = func(zips []preflight.ZipArchive) preflight.IntegritySummary {
+		return preflight.IntegritySummary{
+			Checked:           []preflight.ArchiveIntegrity{{Archive: zips[0], FileCount: 1, UncompressedBytes: 100}},
+			TotalUncompressed: 100,
+			TotalZipBytes:     20,
+		}
+	}
+	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		return preflight.SpaceCheck{
+			AvailableBytes:          200,
+			RequiredBytes:           120,
+			RequiredWithDeleteBytes: 80,
+			Enough:                  true,
+			EnoughWithDelete:        true,
+		}, nil
+	}
+	loadState = func(string) (state.RunState, error) { return state.New(), nil }
+	saveState = func(string, state.RunState) error { return nil }
+
+	removeCalls := 0
+	removeFile = func(string) error {
+		removeCalls++
+		return nil
+	}
+	extractArchiveFile = func(string, string) (int, error) { return 1, nil }
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		return processor.Report{
+			Summary: processor.Summary{
+				CreateDateWarnings: 1,
+			},
+			ProblemCounts: map[string]int{
+				"create date warnings": 1,
+				"json remove errors":   1,
+			},
+			ProblemSamples: map[string][]string{
+				"create date warnings": []string{"Takeout/photo.jpg"},
+				"json remove errors":   []string{"Takeout/photo.jpg.json"},
+			},
+		}, nil
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success for warning-only problems, got %d\n%s", code, out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Status: SUCCESS")) {
+		t.Fatalf("expected SUCCESS status, got:\n%s", out.String())
+	}
+	if removeCalls != 1 {
+		t.Fatalf("expected deferred zip deletion on success, got %d calls", removeCalls)
 	}
 }
 

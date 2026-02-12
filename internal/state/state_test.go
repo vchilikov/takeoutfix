@@ -1,7 +1,9 @@
 package state
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,5 +38,32 @@ func TestLoadMissingReturnsEmpty(t *testing.T) {
 	}
 	if len(got.Archives) != 0 {
 		t.Fatalf("expected empty state")
+	}
+}
+
+func TestSaveDoesNotLeaveTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, ".takeoutfix")
+	path := filepath.Join(stateDir, "state.json")
+
+	st := New()
+	st.Archives["a.zip"] = ArchiveState{Fingerprint: "fp1", Extracted: true, Deleted: true}
+
+	if err := Save(path, st); err != nil {
+		t.Fatalf("Save error: %v", err)
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected state file to exist, got error: %v", err)
+	}
+
+	entries, err := os.ReadDir(stateDir)
+	if err != nil {
+		t.Fatalf("ReadDir error: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "state-") && strings.HasSuffix(entry.Name(), ".tmp") {
+			t.Fatalf("unexpected temp state file left behind: %s", entry.Name())
+		}
 	}
 }

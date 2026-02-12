@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-func TestGetMedia_ReportsMissingAndUnusedJSON(t *testing.T) {
-	album := t.TempDir()
+func TestScanTakeoutFlatDirReportsMissingAndUnusedJSON(t *testing.T) {
+	root := t.TempDir()
 
 	mustWrite := func(name string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(album, name), []byte("x"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0o600); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}
@@ -22,9 +22,9 @@ func TestGetMedia_ReportsMissingAndUnusedJSON(t *testing.T) {
 	mustWrite("b.jpg")
 	mustWrite("orphan.json")
 
-	result, err := GetMedia(album)
+	result, err := ScanTakeout(root)
 	if err != nil {
-		t.Fatalf("GetMedia error: %v", err)
+		t.Fatalf("ScanTakeout error: %v", err)
 	}
 
 	if got, want := result.Pairs["a.jpg"], "a.jpg.json"; got != want {
@@ -37,6 +37,59 @@ func TestGetMedia_ReportsMissingAndUnusedJSON(t *testing.T) {
 
 	if !reflect.DeepEqual(result.UnusedJSON, []string{"orphan.json"}) {
 		t.Fatalf("unused json mismatch: got %v", result.UnusedJSON)
+	}
+}
+
+func TestScanTakeoutFlatDirRandomSuffixWithoutMatchStaysMissing(t *testing.T) {
+	root := t.TempDir()
+
+	mustWrite := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	mustWrite("IMG_0001-abcde.png")
+	mustWrite("IMG_9999.jpg.json")
+
+	result, err := ScanTakeout(root)
+	if err != nil {
+		t.Fatalf("ScanTakeout error: %v", err)
+	}
+
+	if len(result.Pairs) != 0 {
+		t.Fatalf("expected no pairs, got %v", result.Pairs)
+	}
+	if !reflect.DeepEqual(result.MissingJSON, []string{"IMG_0001-abcde.png"}) {
+		t.Fatalf("missing json mismatch: got %v", result.MissingJSON)
+	}
+	if !reflect.DeepEqual(result.UnusedJSON, []string{"IMG_9999.jpg.json"}) {
+		t.Fatalf("unused json mismatch: got %v", result.UnusedJSON)
+	}
+}
+
+func TestScanTakeoutFlatDirRandomSuffixWithSiblingAllowsFallback(t *testing.T) {
+	root := t.TempDir()
+
+	mustWrite := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	mustWrite("IMG_0001-abcde.png")
+	mustWrite("IMG_0001.png")
+	mustWrite("IMG_0001.jpg.json")
+
+	result, err := ScanTakeout(root)
+	if err != nil {
+		t.Fatalf("ScanTakeout error: %v", err)
+	}
+
+	if got, ok := result.Pairs["IMG_0001-abcde.png"]; !ok || got != "IMG_0001.jpg.json" {
+		t.Fatalf("expected fallback pair for random suffix file, got %v", result.Pairs)
 	}
 }
 
@@ -89,6 +142,45 @@ func TestScanTakeout_CrossFolderSupplementalMatch(t *testing.T) {
 	}
 	if len(result.UnusedJSON) != 0 {
 		t.Fatalf("unexpected unused json: %v", result.UnusedJSON)
+	}
+}
+
+func TestScanTakeout_UsesSupportedMediaWhitelist(t *testing.T) {
+	root := t.TempDir()
+	mediaRel := "photo.webp"
+	mediaJSONRel := "photo.webp.json"
+	nonMediaRel := "notes.txt"
+	nonMediaJSONRel := "notes.txt.json"
+
+	if err := os.WriteFile(filepath.Join(root, mediaRel), []byte("media"), 0o600); err != nil {
+		t.Fatalf("write webp media: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, mediaJSONRel), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write webp json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, nonMediaRel), []byte("notes"), 0o600); err != nil {
+		t.Fatalf("write txt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, nonMediaJSONRel), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write txt json: %v", err)
+	}
+
+	result, err := ScanTakeout(root)
+	if err != nil {
+		t.Fatalf("ScanTakeout error: %v", err)
+	}
+
+	if got, ok := result.Pairs[mediaRel]; !ok || got != mediaJSONRel {
+		t.Fatalf("expected pair %q -> %q, got %v", mediaRel, mediaJSONRel, result.Pairs)
+	}
+	if _, ok := result.Pairs[nonMediaRel]; ok {
+		t.Fatalf("did not expect non-media txt file in pairs: %v", result.Pairs)
+	}
+	if len(result.MissingJSON) != 0 {
+		t.Fatalf("expected no missing json, got %v", result.MissingJSON)
+	}
+	if !reflect.DeepEqual(result.UnusedJSON, []string{nonMediaJSONRel}) {
+		t.Fatalf("unused mismatch: want %v, got %v", []string{nonMediaJSONRel}, result.UnusedJSON)
 	}
 }
 

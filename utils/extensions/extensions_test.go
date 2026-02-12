@@ -1,6 +1,7 @@
 package extensions
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -42,6 +43,24 @@ func TestGenerateRandomSuffix(t *testing.T) {
 		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyz0123456789", r) {
 			t.Fatalf("unexpected rune in suffix: %q", r)
 		}
+	}
+}
+
+func TestGenerateRandomSuffixFromReaderSkipsBiasedBytes(t *testing.T) {
+	source := bytes.NewReader([]byte{252, 253, 254, 255, 0, 1, 2, 3, 4})
+	got, err := generateRandomSuffixFromReader(source)
+	if err != nil {
+		t.Fatalf("generateRandomSuffixFromReader error: %v", err)
+	}
+	if got != "abcde" {
+		t.Fatalf("expected deterministic suffix abcde, got %q", got)
+	}
+}
+
+func TestGenerateRandomSuffixFromReaderPropagatesError(t *testing.T) {
+	_, err := generateRandomSuffixFromReader(bytes.NewReader([]byte{1, 2, 3}))
+	if err == nil {
+		t.Fatalf("expected reader error")
 	}
 }
 
