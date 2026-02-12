@@ -24,6 +24,9 @@ func TestHasSupportedExtension(t *testing.T) {
 	if !hasSupportedExtension("photo.webp") {
 		t.Fatalf("expected WEBP extension to be supported")
 	}
+	if !hasSupportedExtension("clip.AVI") {
+		t.Fatalf("expected AVI extension to be supported")
+	}
 }
 
 func TestBuildExiftoolArgs_DoesNotIncludeOffsetTags(t *testing.T) {

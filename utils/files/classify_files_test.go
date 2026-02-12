@@ -51,6 +51,7 @@ func TestClassifyFiles_UsesSupportedMediaWhitelist(t *testing.T) {
 		"index.html": "<html/>",
 		"data.csv":   "a,b",
 		"photo.webp": "x",
+		"clip.AVI":   "x",
 		"meta.json":  "{}",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
@@ -67,6 +68,9 @@ func TestClassifyFiles_UsesSupportedMediaWhitelist(t *testing.T) {
 
 	if _, ok := mediaFiles["photo.webp"]; !ok {
 		t.Fatalf("expected photo.webp to be classified as media")
+	}
+	if _, ok := mediaFiles["clip.AVI"]; !ok {
+		t.Fatalf("expected clip.AVI to be classified as media")
 	}
 	for _, name := range []string{"note.txt", "index.html", "data.csv", "meta.json"} {
 		if _, ok := mediaFiles[name]; ok {

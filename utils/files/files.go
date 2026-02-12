@@ -94,13 +94,39 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 			localCandidateClaims[jsonRel] = append(localCandidateClaims[jsonRel], mediaRel)
 		}
 
+		localCandidateWinner := make(map[string]string)
+		for jsonRel, claims := range localCandidateClaims {
+			if len(claims) <= 1 {
+				continue
+			}
+			if winner, ok := uniqueClaimantByJSONTargetExtension(jsonRel, claims); ok {
+				localCandidateWinner[jsonRel] = winner
+			}
+		}
+
 		for _, mediaFile := range mediaByDir[dir] {
 			mediaRel := joinRelPath(dir, mediaFile)
 			jsonRel, ok := localCandidatesByMedia[mediaRel]
 			if !ok {
 				continue
 			}
-			if len(localCandidateClaims[jsonRel]) > 1 {
+			claims := localCandidateClaims[jsonRel]
+			if len(claims) > 1 {
+				winner, ok := localCandidateWinner[jsonRel]
+				if !ok || winner != mediaRel {
+					unresolvedMedia = append(unresolvedMedia, mediaRel)
+					continue
+				}
+				if _, alreadyUsed := usedJSON[jsonRel]; alreadyUsed {
+					unresolvedMedia = append(unresolvedMedia, mediaRel)
+					continue
+				}
+
+				result.Pairs[mediaRel] = jsonRel
+				usedJSON[jsonRel] = struct{}{}
+				continue
+			}
+			if _, alreadyUsed := usedJSON[jsonRel]; alreadyUsed {
 				unresolvedMedia = append(unresolvedMedia, mediaRel)
 				continue
 			}
@@ -144,6 +170,10 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	globalCandidateWinner := make(map[string]string)
 	for candidate, claims := range globalCandidateClaims {
 		if len(claims) <= 1 {
+			continue
+		}
+		if winner, ok := uniqueClaimantByJSONTargetExtension(candidate, claims); ok {
+			globalCandidateWinner[candidate] = winner
 			continue
 		}
 		if winner, ok := uniqueSameDirClaimant(candidate, claims); ok {
@@ -263,6 +293,42 @@ func uniqueSameDirClaimant(candidate string, claims []string) (string, bool) {
 	return sameDirClaims[0], true
 }
 
+func uniqueClaimantByJSONTargetExtension(jsonRel string, claims []string) (string, bool) {
+	targetExt := jsonTargetExtension(jsonRel)
+	if targetExt == "" {
+		return "", false
+	}
+
+	var winner string
+	matchCount := 0
+	for _, mediaRel := range claims {
+		if strings.EqualFold(filepath.Ext(mediaRel), targetExt) {
+			winner = mediaRel
+			matchCount++
+		}
+	}
+	if matchCount != 1 {
+		return "", false
+	}
+	return winner, true
+}
+
+func jsonTargetExtension(jsonRel string) string {
+	name := strings.ToLower(filepath.Base(jsonRel))
+	if !strings.HasSuffix(name, ".json") {
+		return ""
+	}
+
+	name = strings.TrimSuffix(name, ".json")
+	name = trailingNumberSuffixRe.ReplaceAllString(name, "")
+	name = stripSupplementalSuffix(name)
+	ext := filepath.Ext(name)
+	if !isSupportedMediaExtension(ext) {
+		return ""
+	}
+	return ext
+}
+
 func mediaLookupKeys(mediaFile string) []string {
 	keys := make(map[string]struct{})
 	add := func(name string) {
@@ -329,7 +395,13 @@ func isJSONFile(name string) bool {
 }
 
 func isMediaCandidate(name string) bool {
-	ext := filepath.Ext(name)
+	return isSupportedMediaExtension(filepath.Ext(name))
+}
+
+func isSupportedMediaExtension(ext string) bool {
+	if ext == "" {
+		return false
+	}
 	for _, supportedExt := range mediaext.Supported {
 		if strings.EqualFold(ext, supportedExt) {
 			return true

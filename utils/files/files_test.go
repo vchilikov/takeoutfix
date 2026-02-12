@@ -154,16 +154,24 @@ func TestScanTakeout_CrossFolderSupplementalMatch(t *testing.T) {
 
 func TestScanTakeout_UsesSupportedMediaWhitelist(t *testing.T) {
 	root := t.TempDir()
-	mediaRel := "photo.webp"
-	mediaJSONRel := "photo.webp.json"
+	webpMediaRel := "photo.webp"
+	webpJSONRel := "photo.webp.json"
+	aviMediaRel := "clip.AVI"
+	aviJSONRel := "clip.AVI.supplemental-metadata.json"
 	nonMediaRel := "notes.txt"
 	nonMediaJSONRel := "notes.txt.json"
 
-	if err := os.WriteFile(filepath.Join(root, mediaRel), []byte("media"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, webpMediaRel), []byte("media"), 0o600); err != nil {
 		t.Fatalf("write webp media: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, mediaJSONRel), []byte("{}"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, webpJSONRel), []byte("{}"), 0o600); err != nil {
 		t.Fatalf("write webp json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, aviMediaRel), []byte("media"), 0o600); err != nil {
+		t.Fatalf("write avi media: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, aviJSONRel), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write avi json: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, nonMediaRel), []byte("notes"), 0o600); err != nil {
 		t.Fatalf("write txt: %v", err)
@@ -177,8 +185,11 @@ func TestScanTakeout_UsesSupportedMediaWhitelist(t *testing.T) {
 		t.Fatalf("ScanTakeout error: %v", err)
 	}
 
-	if got, ok := result.Pairs[mediaRel]; !ok || got != mediaJSONRel {
-		t.Fatalf("expected pair %q -> %q, got %v", mediaRel, mediaJSONRel, result.Pairs)
+	if got, ok := result.Pairs[webpMediaRel]; !ok || got != webpJSONRel {
+		t.Fatalf("expected pair %q -> %q, got %v", webpMediaRel, webpJSONRel, result.Pairs)
+	}
+	if got, ok := result.Pairs[aviMediaRel]; !ok || got != aviJSONRel {
+		t.Fatalf("expected pair %q -> %q, got %v", aviMediaRel, aviJSONRel, result.Pairs)
 	}
 	if _, ok := result.Pairs[nonMediaRel]; ok {
 		t.Fatalf("did not expect non-media txt file in pairs: %v", result.Pairs)
@@ -403,18 +414,18 @@ func TestScanTakeout_SharedSingleCandidateUsesUniqueSameDirClaimant(t *testing.T
 	}
 }
 
-func TestScanTakeout_LocalSharedSingleJSONIsAmbiguous(t *testing.T) {
+func TestScanTakeout_LocalSharedSingleJSONPrefersJSONTargetJPG(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "A")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir A: %v", err)
 	}
 
-	mediaA := filepath.Join("A", "IMG_0001.jpg")
-	mediaB := filepath.Join("A", "IMG_0001.mp4")
-	jsonRel := filepath.Join("A", "IMG_0001.mp4.supplemental-metadata.json")
+	mediaJPG := filepath.Join("A", "IMG_0001.jpg")
+	mediaMP4 := filepath.Join("A", "IMG_0001.mp4")
+	jsonRel := filepath.Join("A", "IMG_0001.jpg.supplemental-metadata.json")
 
-	for _, rel := range []string{mediaA, mediaB, jsonRel} {
+	for _, rel := range []string{mediaJPG, mediaMP4, jsonRel} {
 		if err := os.WriteFile(filepath.Join(root, rel), []byte("x"), 0o600); err != nil {
 			t.Fatalf("write %s: %v", rel, err)
 		}
@@ -425,21 +436,98 @@ func TestScanTakeout_LocalSharedSingleJSONIsAmbiguous(t *testing.T) {
 		t.Fatalf("ScanTakeout error: %v", err)
 	}
 
-	if len(result.Pairs) != 0 {
-		t.Fatalf("expected no pairs, got %v", result.Pairs)
+	if got := result.Pairs[mediaJPG]; got != jsonRel {
+		t.Fatalf("pair mismatch: want %q, got %q", jsonRel, got)
 	}
-	wantAmbiguous := map[string][]string{
-		mediaA: []string{jsonRel},
-		mediaB: []string{jsonRel},
+	if _, ok := result.Pairs[mediaMP4]; ok {
+		t.Fatalf("did not expect pair for %q, got %v", mediaMP4, result.Pairs)
 	}
-	if !reflect.DeepEqual(result.AmbiguousJSON, wantAmbiguous) {
-		t.Fatalf("ambiguous mismatch: want %v, got %v", wantAmbiguous, result.AmbiguousJSON)
+	if !reflect.DeepEqual(result.MissingJSON, []string{mediaMP4}) {
+		t.Fatalf("missing mismatch: want %v, got %v", []string{mediaMP4}, result.MissingJSON)
 	}
-	if len(result.MissingJSON) != 0 {
-		t.Fatalf("expected no missing json, got %v", result.MissingJSON)
+	if len(result.AmbiguousJSON) != 0 {
+		t.Fatalf("expected no ambiguous json, got %v", result.AmbiguousJSON)
 	}
-	if !reflect.DeepEqual(result.UnusedJSON, []string{jsonRel}) {
-		t.Fatalf("unused mismatch: want %v, got %v", []string{jsonRel}, result.UnusedJSON)
+	if len(result.UnusedJSON) != 0 {
+		t.Fatalf("expected no unused json, got %v", result.UnusedJSON)
+	}
+}
+
+func TestScanTakeout_LocalSharedSingleJSONPrefersJSONTargetMP4(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "A")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir A: %v", err)
+	}
+
+	mediaJPG := filepath.Join("A", "IMG_0001.jpg")
+	mediaMP4 := filepath.Join("A", "IMG_0001.mp4")
+	jsonRel := filepath.Join("A", "IMG_0001.mp4.supplemental-metadata.json")
+
+	for _, rel := range []string{mediaJPG, mediaMP4, jsonRel} {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte("x"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+
+	result, err := ScanTakeout(root)
+	if err != nil {
+		t.Fatalf("ScanTakeout error: %v", err)
+	}
+
+	if got := result.Pairs[mediaMP4]; got != jsonRel {
+		t.Fatalf("pair mismatch: want %q, got %q", jsonRel, got)
+	}
+	if _, ok := result.Pairs[mediaJPG]; ok {
+		t.Fatalf("did not expect pair for %q, got %v", mediaJPG, result.Pairs)
+	}
+	if !reflect.DeepEqual(result.MissingJSON, []string{mediaJPG}) {
+		t.Fatalf("missing mismatch: want %v, got %v", []string{mediaJPG}, result.MissingJSON)
+	}
+	if len(result.AmbiguousJSON) != 0 {
+		t.Fatalf("expected no ambiguous json, got %v", result.AmbiguousJSON)
+	}
+	if len(result.UnusedJSON) != 0 {
+		t.Fatalf("expected no unused json, got %v", result.UnusedJSON)
+	}
+}
+
+func TestScanTakeout_LocalSharedSingleJSONPrefersJSONTargetWithDuplicateIndex(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "A")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir A: %v", err)
+	}
+
+	mediaJPG := filepath.Join("A", "IMG_0001(1).jpg")
+	mediaMP4 := filepath.Join("A", "IMG_0001(1).mp4")
+	jsonRel := filepath.Join("A", "IMG_0001.jpg.supplemental-metadata(1).json")
+
+	for _, rel := range []string{mediaJPG, mediaMP4, jsonRel} {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte("x"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+
+	result, err := ScanTakeout(root)
+	if err != nil {
+		t.Fatalf("ScanTakeout error: %v", err)
+	}
+
+	if got := result.Pairs[mediaJPG]; got != jsonRel {
+		t.Fatalf("pair mismatch: want %q, got %q", jsonRel, got)
+	}
+	if _, ok := result.Pairs[mediaMP4]; ok {
+		t.Fatalf("did not expect pair for %q, got %v", mediaMP4, result.Pairs)
+	}
+	if !reflect.DeepEqual(result.MissingJSON, []string{mediaMP4}) {
+		t.Fatalf("missing mismatch: want %v, got %v", []string{mediaMP4}, result.MissingJSON)
+	}
+	if len(result.AmbiguousJSON) != 0 {
+		t.Fatalf("expected no ambiguous json, got %v", result.AmbiguousJSON)
+	}
+	if len(result.UnusedJSON) != 0 {
+		t.Fatalf("expected no unused json, got %v", result.UnusedJSON)
 	}
 }
 
