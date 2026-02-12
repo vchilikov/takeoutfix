@@ -353,6 +353,13 @@ func TestDetectTimestampStatus(t *testing.T) {
 		}
 	})
 
+	t.Run("invalid negative string timestamp", func(t *testing.T) {
+		jsonPath := writeJSONFixture(t, `{"photoTakenTime":{"timestamp":"-1"}}`)
+		if got := detectTimestampStatus(jsonPath); got != timestampStatusInvalid {
+			t.Fatalf("expected invalid status for negative string, got %v", got)
+		}
+	})
+
 	t.Run("invalid zero numeric timestamp", func(t *testing.T) {
 		jsonPath := writeJSONFixture(t, `{"photoTakenTime":{"timestamp":0}}`)
 		if got := detectTimestampStatus(jsonPath); got != timestampStatusInvalid {
@@ -564,6 +571,42 @@ func TestApplyDetailedWithRunner_InvalidTimestampUsesFilenameFallback(t *testing
 	}
 	if !result.UsedFilenameDate {
 		t.Fatalf("expected UsedFilenameDate=true")
+	}
+	if calls != 2 {
+		t.Fatalf("expected two exiftool calls, got %d", calls)
+	}
+}
+
+func TestApplyDetailedWithRunner_MissingTimestampFilenameFallbackFailureIsWarning(t *testing.T) {
+	jsonPath := writeJSONFixture(t, `{"title":"x"}`)
+	calls := 0
+	runner := func(args []string) (string, error) {
+		calls++
+		switch calls {
+		case 1:
+			if slices.Contains(args, "-AllDates<PhotoTakenTimeTimestamp") {
+				t.Fatalf("did not expect JSON date mapping when timestamp is missing, args: %v", args)
+			}
+			return "1 image files updated\n", nil
+		case 2:
+			if !slices.Contains(args, "-DateTimeOriginal=2013:06:11 16:19:16") {
+				t.Fatalf("expected filename date assignment, args: %v", args)
+			}
+			return "Error: failed to write DateTimeOriginal\n", fmt.Errorf("exiftool failed")
+		default:
+			return "", fmt.Errorf("unexpected call %d", calls)
+		}
+	}
+
+	result, err := ApplyDetailedWithRunner("2013-06-11 16.19.16.jpg", jsonPath, runner)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.UsedFilenameDate {
+		t.Fatalf("expected UsedFilenameDate=false when fallback fails")
+	}
+	if !result.FilenameDateWarned {
+		t.Fatalf("expected FilenameDateWarned=true when fallback fails")
 	}
 	if calls != 2 {
 		t.Fatalf("expected two exiftool calls, got %d", calls)

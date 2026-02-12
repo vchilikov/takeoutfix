@@ -18,9 +18,10 @@ import (
 )
 
 type ApplyResult struct {
-	UsedFilenameDate bool
-	UsedXMPSidecar   bool
-	CreateDateWarned bool
+	UsedFilenameDate   bool
+	UsedXMPSidecar     bool
+	CreateDateWarned   bool
+	FilenameDateWarned bool
 }
 
 type timestampStatus int
@@ -111,11 +112,12 @@ func ApplyDetailedWithRunner(
 	if status == timestampStatusMissing || status == timestampStatusInvalid {
 		usedFilenameDate, filenameCreateDateWarned, err := applyFilenameDate(mediaPath, outMediaPath, includeCreateDate, run)
 		if err != nil {
-			return result, err
-		}
-		result.UsedFilenameDate = usedFilenameDate
-		if filenameCreateDateWarned {
-			result.CreateDateWarned = true
+			result.FilenameDateWarned = true
+		} else {
+			result.UsedFilenameDate = usedFilenameDate
+			if filenameCreateDateWarned {
+				result.CreateDateWarned = true
+			}
 		}
 	}
 
@@ -284,6 +286,7 @@ func applyFilenameDate(
 func buildFilenameDateArgs(outMediaPath string, value time.Time, includeCreateDate bool) []string {
 	formatted := value.Format("2006:01:02 15:04:05")
 
+	// Intentionally omit -d "%s": fallback writes fully formatted date-time strings, not epoch values.
 	args := []string{
 		"-m",
 		"-DateTimeOriginal=" + formatted,

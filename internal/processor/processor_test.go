@@ -153,6 +153,62 @@ func TestRunWithProgress_AggregatesResultsAndContinuesOnFileErrors(t *testing.T)
 	}
 }
 
+func TestRunWithProgress_FilenameDateWarningIsNonFatal(t *testing.T) {
+	restore := stubProcessorDeps()
+	defer restore()
+
+	root := t.TempDir()
+
+	scanTakeout = func(string) (files.MediaScanResult, error) {
+		return files.MediaScanResult{
+			Pairs: map[string]string{
+				"a.jpg": "a.json",
+			},
+		}, nil
+	}
+
+	fixMediaExtension = func(mediaPath string) (extensions.FixResult, error) {
+		return extensions.FixResult{Path: mediaPath}, nil
+	}
+
+	applyMediaMetadata = func(mediaPath string, jsonPath string) (metadata.ApplyResult, error) {
+		if filepath.Base(mediaPath) != "a.jpg" || filepath.Base(jsonPath) != "a.json" {
+			t.Fatalf("unexpected metadata input: media=%s json=%s", mediaPath, jsonPath)
+		}
+		return metadata.ApplyResult{FilenameDateWarned: true}, nil
+	}
+
+	removed := make(map[string]int)
+	removeJSONFile = func(path string) error {
+		removed[filepath.Base(path)]++
+		return nil
+	}
+
+	report, err := RunWithProgress(root, nil)
+	if err != nil {
+		t.Fatalf("RunWithProgress returned error: %v", err)
+	}
+
+	if report.Summary.MetadataApplied != 1 {
+		t.Fatalf("MetadataApplied: want 1, got %d", report.Summary.MetadataApplied)
+	}
+	if report.Summary.JSONRemoved != 1 {
+		t.Fatalf("JSONRemoved: want 1, got %d", report.Summary.JSONRemoved)
+	}
+	if report.Summary.JSONKeptDueToErrors != 0 {
+		t.Fatalf("JSONKeptDueToErrors: want 0, got %d", report.Summary.JSONKeptDueToErrors)
+	}
+	if got := report.ProblemCounts["filename date warnings"]; got != 1 {
+		t.Fatalf("filename date warnings: want 1, got %d", got)
+	}
+	if got := report.ProblemCounts["metadata errors"]; got != 0 {
+		t.Fatalf("metadata errors: want 0, got %d", got)
+	}
+	if removed["a.json"] != 1 {
+		t.Fatalf("expected a.json remove call once, got remove calls: %v", removed)
+	}
+}
+
 func TestRunWithProgress_ReturnsScanError(t *testing.T) {
 	restore := stubProcessorDeps()
 	defer restore()
