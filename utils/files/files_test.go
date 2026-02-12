@@ -290,7 +290,7 @@ func TestScanTakeout_GlobalSameDirTieBreakPrefersLocalCandidate(t *testing.T) {
 
 	mediaRel := filepath.Join("A", "IMG_0001-abcde.png")
 	jsonSameDir := filepath.Join("A", "IMG_0001.jpg.supplemental-metadata.json")
-	jsonOtherDir := filepath.Join("B", "IMG_0001.jpg.supplemental-metada.json")
+	jsonOtherDir := filepath.Join("B", "IMG_0001.jpg.supplemental-metadata.json")
 
 	for _, rel := range []string{mediaRel, jsonSameDir, jsonOtherDir} {
 		if err := os.WriteFile(filepath.Join(root, rel), []byte("x"), 0o600); err != nil {
@@ -314,6 +314,19 @@ func TestScanTakeout_GlobalSameDirTieBreakPrefersLocalCandidate(t *testing.T) {
 	}
 	if !reflect.DeepEqual(result.UnusedJSON, []string{jsonOtherDir}) {
 		t.Fatalf("unused mismatch: want %v, got %v", []string{jsonOtherDir}, result.UnusedJSON)
+	}
+}
+
+func TestApplyGlobalCandidateRules_SameDirFallbackKeepsCandidates(t *testing.T) {
+	mediaRel := filepath.Join("A", "IMG_0001.jpg")
+	candidates := []string{
+		filepath.Join("B", "IMG_0001.jpg.supplemental-metadata.json"),
+		filepath.Join("C", "IMG_0001.jpg.supplemental-metadata.json"),
+	}
+
+	got := applyGlobalCandidateRules(mediaRel, candidates)
+	if !reflect.DeepEqual(got, candidates) {
+		t.Fatalf("same-dir fallback mismatch: want %v, got %v", candidates, got)
 	}
 }
 

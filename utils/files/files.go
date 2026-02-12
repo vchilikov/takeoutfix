@@ -229,6 +229,8 @@ func applyGlobalCandidateRules(mediaRel string, candidates []string) []string {
 		return sameDir
 	}
 
+	// If same-dir narrowing finds none or several matches, keep the current
+	// candidate set unchanged and let ambiguity handling decide later.
 	return candidates
 }
 
