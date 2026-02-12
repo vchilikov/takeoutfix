@@ -128,7 +128,7 @@ func TestBuildExiftoolArgs_GeoDataExifComesAfterGeoData(t *testing.T) {
 }
 
 func TestBuildExiftoolArgsWithOptions_ExcludesDateTagsWhenDisabled(t *testing.T) {
-	args := buildExiftoolArgsWithOptions("meta.json", "photo.jpg", true, false)
+	args := buildExiftoolArgsWithOptions("meta.json", "photo.jpg", true, false, gpsInclusion{true, true})
 	for _, arg := range args {
 		if strings.Contains(arg, "PhotoTakenTimeTimestamp") {
 			t.Fatalf("did not expect date mapping when disabled, got: %v", args)
@@ -547,6 +547,112 @@ func TestApplyDetailedWithRunner_MissingTimestampUnparseableFilenameSkipsFallbac
 	}
 	if calls != 1 {
 		t.Fatalf("expected one exiftool call, got %d", calls)
+	}
+}
+
+func TestDetectGPSInclusion_BothZero(t *testing.T) {
+	jsonPath := writeJSONFixture(t, `{"geoData":{"latitude":0.0,"longitude":0.0},"geoDataExif":{"latitude":0.0,"longitude":0.0}}`)
+	gps := detectGPSInclusion(jsonPath)
+	if gps.geoData {
+		t.Fatalf("expected geoData=false for zero coords")
+	}
+	if gps.geoDataExif {
+		t.Fatalf("expected geoDataExif=false for zero coords")
+	}
+}
+
+func TestDetectGPSInclusion_GeoDataValid(t *testing.T) {
+	jsonPath := writeJSONFixture(t, `{"geoData":{"latitude":55.7,"longitude":37.5},"geoDataExif":{"latitude":0.0,"longitude":0.0}}`)
+	gps := detectGPSInclusion(jsonPath)
+	if !gps.geoData {
+		t.Fatalf("expected geoData=true for valid coords")
+	}
+	if gps.geoDataExif {
+		t.Fatalf("expected geoDataExif=false for zero coords")
+	}
+}
+
+func TestDetectGPSInclusion_GeoDataZeroExifValid(t *testing.T) {
+	jsonPath := writeJSONFixture(t, `{"geoData":{"latitude":0.0,"longitude":0.0},"geoDataExif":{"latitude":48.8,"longitude":2.3}}`)
+	gps := detectGPSInclusion(jsonPath)
+	if gps.geoData {
+		t.Fatalf("expected geoData=false for zero coords")
+	}
+	if !gps.geoDataExif {
+		t.Fatalf("expected geoDataExif=true for valid coords")
+	}
+}
+
+func TestDetectGPSInclusion_GeoDataValidExifZero(t *testing.T) {
+	jsonPath := writeJSONFixture(t, `{"geoData":{"latitude":55.7,"longitude":37.5},"geoDataExif":{"latitude":0.0,"longitude":0.0}}`)
+	gps := detectGPSInclusion(jsonPath)
+	if !gps.geoData {
+		t.Fatalf("expected geoData=true for valid coords")
+	}
+	if gps.geoDataExif {
+		t.Fatalf("expected geoDataExif=false for zero coords")
+	}
+}
+
+func TestDetectGPSInclusion_NullCoords(t *testing.T) {
+	jsonPath := writeJSONFixture(t, `{"geoDataExif":{"latitude":null,"longitude":null}}`)
+	gps := detectGPSInclusion(jsonPath)
+	if gps.geoData {
+		t.Fatalf("expected geoData=false for missing field")
+	}
+	if gps.geoDataExif {
+		t.Fatalf("expected geoDataExif=false for null coords")
+	}
+}
+
+func TestDetectGPSInclusion_MissingFields(t *testing.T) {
+	jsonPath := writeJSONFixture(t, `{"title":"no geo at all"}`)
+	gps := detectGPSInclusion(jsonPath)
+	if gps.geoData {
+		t.Fatalf("expected geoData=false when field is missing")
+	}
+	if gps.geoDataExif {
+		t.Fatalf("expected geoDataExif=false when field is missing")
+	}
+}
+
+func TestDetectGPSInclusion_UnreadableFile(t *testing.T) {
+	gps := detectGPSInclusion("/nonexistent/path/meta.json")
+	if !gps.geoData || !gps.geoDataExif {
+		t.Fatalf("expected fail-open (both true) for unreadable file, got geoData=%v geoDataExif=%v", gps.geoData, gps.geoDataExif)
+	}
+}
+
+func TestBuildExiftoolArgs_ExcludesGeoDataGPSWhenZero(t *testing.T) {
+	args := buildExiftoolArgsWithOptions("meta.json", "photo.jpg", true, true, gpsInclusion{false, true})
+
+	for _, arg := range args {
+		if strings.Contains(arg, "GeoDataLatitude") && !strings.Contains(arg, "GeoDataExif") {
+			t.Fatalf("did not expect GeoData (non-Exif) GPS args, got: %v", args)
+		}
+	}
+	if !slices.Contains(args, "-GPSLatitude<GeoDataExifLatitude") {
+		t.Fatalf("expected GeoDataExif latitude mapping, got: %v", args)
+	}
+	if !slices.Contains(args, "-GPSLongitude<GeoDataExifLongitude") {
+		t.Fatalf("expected GeoDataExif longitude mapping, got: %v", args)
+	}
+}
+
+func TestBuildExiftoolArgs_ExcludesAllGPSWhenBothZero(t *testing.T) {
+	args := buildExiftoolArgsWithOptions("meta.json", "photo.jpg", true, true, gpsInclusion{false, false})
+
+	for _, arg := range args {
+		if strings.Contains(arg, "GPS") {
+			t.Fatalf("did not expect any GPS args when both are zero, got: %v", args)
+		}
+	}
+	// Non-GPS tags should still be present.
+	if !slices.Contains(args, "-Title<Title") {
+		t.Fatalf("expected Title mapping even when GPS excluded, got: %v", args)
+	}
+	if !slices.Contains(args, "-Keywords<Tags") {
+		t.Fatalf("expected Keywords mapping even when GPS excluded, got: %v", args)
 	}
 }
 

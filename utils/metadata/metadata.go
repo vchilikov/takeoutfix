@@ -34,6 +34,43 @@ const (
 
 var filenameDatePrefixRe = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2})`)
 
+type gpsInclusion struct {
+	geoData     bool
+	geoDataExif bool
+}
+
+func detectGPSInclusion(jsonPath string) gpsInclusion {
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		return gpsInclusion{true, true} // fail-open
+	}
+
+	var payload struct {
+		GeoData *struct {
+			Latitude  *float64 `json:"latitude"`
+			Longitude *float64 `json:"longitude"`
+		} `json:"geoData"`
+		GeoDataExif *struct {
+			Latitude  *float64 `json:"latitude"`
+			Longitude *float64 `json:"longitude"`
+		} `json:"geoDataExif"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return gpsInclusion{true, true} // fail-open
+	}
+
+	hasCoords := func(lat, lon *float64) bool {
+		if lat == nil || lon == nil {
+			return false
+		}
+		return *lat != 0 || *lon != 0
+	}
+
+	gd := payload.GeoData != nil && hasCoords(payload.GeoData.Latitude, payload.GeoData.Longitude)
+	gde := payload.GeoDataExif != nil && hasCoords(payload.GeoDataExif.Latitude, payload.GeoDataExif.Longitude)
+	return gpsInclusion{gd, gde}
+}
+
 func Apply(mediaPath string, jsonPath string) error {
 	_, err := ApplyDetailed(mediaPath, jsonPath)
 	return err
@@ -97,10 +134,10 @@ func runExiftool(args []string) (string, error) {
 }
 
 func buildExiftoolArgs(jsonPath string, outMediaPath string, includeCreateDate bool) []string {
-	return buildExiftoolArgsWithOptions(jsonPath, outMediaPath, includeCreateDate, true)
+	return buildExiftoolArgsWithOptions(jsonPath, outMediaPath, includeCreateDate, true, gpsInclusion{true, true})
 }
 
-func buildExiftoolArgsWithOptions(jsonPath string, outMediaPath string, includeCreateDate bool, includeJSONDateTags bool) []string {
+func buildExiftoolArgsWithOptions(jsonPath string, outMediaPath string, includeCreateDate bool, includeJSONDateTags bool, gps gpsInclusion) []string {
 	args := []string{
 		"-d", "%s",
 		"-m",
@@ -113,16 +150,25 @@ func buildExiftoolArgsWithOptions(jsonPath string, outMediaPath string, includeC
 		// into list-like target tags such as Keywords/Subject.
 		"-Keywords<Tags",
 		"-Subject<Tags",
-		"-GPSAltitude<GeoDataAltitude",
-		"-GPSLatitude<GeoDataLatitude",
-		"-GPSLatitudeRef<GeoDataLatitude",
-		"-GPSLongitude<GeoDataLongitude",
-		"-GPSLongitudeRef<GeoDataLongitude",
-		"-GPSAltitude<GeoDataExifAltitude",
-		"-GPSLatitude<GeoDataExifLatitude",
-		"-GPSLatitudeRef<GeoDataExifLatitude",
-		"-GPSLongitude<GeoDataExifLongitude",
-		"-GPSLongitudeRef<GeoDataExifLongitude",
+	}
+
+	if gps.geoData {
+		args = append(args,
+			"-GPSAltitude<GeoDataAltitude",
+			"-GPSLatitude<GeoDataLatitude",
+			"-GPSLatitudeRef<GeoDataLatitude",
+			"-GPSLongitude<GeoDataLongitude",
+			"-GPSLongitudeRef<GeoDataLongitude",
+		)
+	}
+	if gps.geoDataExif {
+		args = append(args,
+			"-GPSAltitude<GeoDataExifAltitude",
+			"-GPSLatitude<GeoDataExifLatitude",
+			"-GPSLatitudeRef<GeoDataExifLatitude",
+			"-GPSLongitude<GeoDataExifLongitude",
+			"-GPSLongitudeRef<GeoDataExifLongitude",
+		)
 	}
 
 	if includeJSONDateTags {
@@ -164,12 +210,13 @@ func applyJSONMetadata(
 	includeJSONDateTags bool,
 	run func(args []string) (string, error),
 ) (bool, error) {
-	args := buildExiftoolArgsWithOptions(jsonPath, outMediaPath, includeCreateDate, includeJSONDateTags)
+	gps := detectGPSInclusion(jsonPath)
+	args := buildExiftoolArgsWithOptions(jsonPath, outMediaPath, includeCreateDate, includeJSONDateTags, gps)
 	output, err := run(args)
 	if err != nil {
 		if includeJSONDateTags && includeCreateDate && strings.Contains(strings.ToLower(output), "filecreatedate") {
 			// Some filesystems and formats may not support FileCreateDate writes.
-			retryArgs := buildExiftoolArgsWithOptions(jsonPath, outMediaPath, false, includeJSONDateTags)
+			retryArgs := buildExiftoolArgsWithOptions(jsonPath, outMediaPath, false, includeJSONDateTags, gps)
 			retryOutput, retryErr := run(retryArgs)
 			if retryErr == nil {
 				return true, nil
@@ -183,13 +230,13 @@ func applyJSONMetadata(
 		if looksLikeCorruptExif(output) {
 			stripArgs := []string{"-all=", "-overwrite_original", patharg.Safe(outMediaPath)}
 			if _, stripErr := run(stripArgs); stripErr == nil {
-				retryArgs := buildExiftoolArgsWithOptions(jsonPath, outMediaPath, includeCreateDate, includeJSONDateTags)
+				retryArgs := buildExiftoolArgsWithOptions(jsonPath, outMediaPath, includeCreateDate, includeJSONDateTags, gps)
 				retryOutput, retryErr := run(retryArgs)
 				if retryErr == nil {
 					return false, nil
 				}
 				if includeJSONDateTags && includeCreateDate && strings.Contains(strings.ToLower(retryOutput), "filecreatedate") {
-					fallbackArgs := buildExiftoolArgsWithOptions(jsonPath, outMediaPath, false, includeJSONDateTags)
+					fallbackArgs := buildExiftoolArgsWithOptions(jsonPath, outMediaPath, false, includeJSONDateTags, gps)
 					fallbackOutput, fallbackErr := run(fallbackArgs)
 					if fallbackErr == nil {
 						return true, nil
