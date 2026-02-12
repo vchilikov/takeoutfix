@@ -61,12 +61,15 @@ Windows (PowerShell):
 
 - Processed files `./takeoutfix-extracted/Takeout` में मिलेंगी।
 - Supported photos और videos में metadata apply हो जाएगा।
+- JSON के `Tags` को `Keywords` और `Subject` में लिखा जाएगा।
+- अगर JSON में `photoTakenTime.timestamp` missing या invalid है, और filename `YYYY-MM-DD HH.MM.SS` से शुरू होता है, तो date filename से restore की जाएगी।
 - आप `./takeoutfix-extracted/Takeout` को अपने नए storage में upload कर सकते हैं।
 
 ## Common Issues
 
 - `No ZIP archives found in current folder.`
-  - सभी Takeout ZIP parts को working folder के top level में रखकर फिर चलाएं।
+  - TakeoutFix working folder में पहले से extracted Takeout content को अपने-आप detect करता है।
+  - अगर यह message फिर भी आए, तो सभी Takeout ZIP parts को working folder के top level में रखें, या tool को उस folder से चलाएं जहां extracted Takeout content मौजूद हो।
 - `Corrupt ZIP files found. Processing stopped.`
   - Google Takeout से खराब archive parts दोबारा डाउनलोड करें और rerun करें।
 - `Missing dependencies: exiftool`

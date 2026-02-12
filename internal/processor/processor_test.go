@@ -56,7 +56,7 @@ func TestRunWithProgress_AggregatesResultsAndContinuesOnFileErrors(t *testing.T)
 		case "c-renamed.jpg":
 			return metadata.ApplyResult{}, errors.New("metadata failed")
 		case "d.jpg":
-			return metadata.ApplyResult{CreateDateWarned: true}, nil
+			return metadata.ApplyResult{CreateDateWarned: true, UsedFilenameDate: true}, nil
 		default:
 			t.Fatalf("unexpected media in metadata apply: %s (%s)", mediaPath, jsonPath)
 			return metadata.ApplyResult{}, nil
@@ -85,6 +85,9 @@ func TestRunWithProgress_AggregatesResultsAndContinuesOnFileErrors(t *testing.T)
 	}
 	if report.Summary.MetadataApplied != 2 {
 		t.Fatalf("MetadataApplied: want 2, got %d", report.Summary.MetadataApplied)
+	}
+	if report.Summary.FilenameDateApplied != 1 {
+		t.Fatalf("FilenameDateApplied: want 1, got %d", report.Summary.FilenameDateApplied)
 	}
 	if report.Summary.RenamedExtensions != 1 {
 		t.Fatalf("RenamedExtensions: want 1, got %d", report.Summary.RenamedExtensions)

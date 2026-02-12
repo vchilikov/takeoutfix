@@ -27,6 +27,7 @@ var (
 	discoverZips       = preflight.DiscoverTopLevelZips
 	validateAll        = preflight.ValidateAll
 	checkDiskSpace     = preflight.CheckDiskSpace
+	hasTakeoutContent  = preflight.HasProcessableTakeout
 	loadState          = state.Load
 	saveState          = state.Save
 	shouldSkip         = state.ShouldSkipExtraction
@@ -81,17 +82,30 @@ func Run(cwd string, out io.Writer) int {
 		info, err := os.Stat(dest)
 		if err != nil {
 			if os.IsNotExist(err) {
-				writeLine(out, "No ZIP archives found and no extracted data.")
-				return finish(ExitPreflightFail)
+				writeLine(out, "No ZIP archives found. Detecting extracted Takeout content in working directory...")
+				processable, detectErr := hasTakeoutContent(cwd)
+				if detectErr != nil {
+					report.addProblem("takeout content detection errors", 1, detectErr.Error())
+					return finish(ExitRuntimeFail)
+				}
+				if !processable {
+					writeLine(out, "No ZIP archives found and no extracted data.")
+					return finish(ExitPreflightFail)
+				}
+				dest = cwd
+				writeLine(out, "No ZIP archives found. Processing existing Takeout content from working directory...")
+			} else {
+				report.addProblem("extracted data access error", 1, err.Error())
+				return finish(ExitRuntimeFail)
 			}
-			report.addProblem("extracted data access error", 1, err.Error())
-			return finish(ExitRuntimeFail)
 		}
-		if !info.IsDir() {
+		if err == nil && !info.IsDir() {
 			writeLine(out, "No ZIP archives found and extracted data path is not a directory.")
 			return finish(ExitPreflightFail)
 		}
-		writeLine(out, "No ZIP archives found. Re-processing previously extracted data...")
+		if err == nil {
+			writeLine(out, "No ZIP archives found. Re-processing previously extracted data...")
+		}
 	}
 
 	if len(zips) > 0 {
@@ -232,6 +246,7 @@ func Run(cwd string, out io.Writer) int {
 
 	report.MediaFound = procReport.Summary.MediaFound
 	report.MetadataApplied = procReport.Summary.MetadataApplied
+	report.FilenameDateApplied = procReport.Summary.FilenameDateApplied
 	report.RenamedExtensions = procReport.Summary.RenamedExtensions
 	report.XMPSidecars = procReport.Summary.XMPSidecars
 	report.CreateDateWarnings = procReport.Summary.CreateDateWarnings

@@ -61,12 +61,15 @@ Windows (PowerShell):
 
 - 处理后的媒体文件位于 `./takeoutfix-extracted/Takeout`。
 - 支持的照片和视频会写入元数据。
+- JSON 中的 `Tags` 会写入 `Keywords` 和 `Subject`。
+- 如果 JSON 中的 `photoTakenTime.timestamp` 缺失或无效，且文件名以 `YYYY-MM-DD HH.MM.SS` 开头，会从文件名恢复日期。
 - 你可以将 `./takeoutfix-extracted/Takeout` 上传到新的云存储。
 
 ## 常见问题
 
 - `No ZIP archives found in current folder.`
-  - 请将所有 Takeout ZIP 分卷放到工作目录顶层后重试。
+  - TakeoutFix 会自动检测工作目录中是否已存在解压后的 Takeout 内容。
+  - 如果仍然出现该提示，请将所有 Takeout ZIP 分卷放到工作目录顶层，或在已包含解压后 Takeout 内容的目录中运行工具。
 - `Corrupt ZIP files found. Processing stopped.`
   - 请在 Google Takeout 重新下载损坏的分卷后重试。
 - `Missing dependencies: exiftool`

@@ -519,6 +519,7 @@ func TestRunFailsWhenNoZipsAndNoExtractedDir(t *testing.T) {
 
 	checkDependencies = func() []preflight.Dependency { return nil }
 	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
+	hasTakeoutContent = func(string) (bool, error) { return false, nil }
 
 	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
 		t.Fatalf("process should not be called when no zips and no extracted dir")
@@ -532,6 +533,38 @@ func TestRunFailsWhenNoZipsAndNoExtractedDir(t *testing.T) {
 	}
 	if !bytes.Contains(out.Bytes(), []byte("No ZIP archives found and no extracted data.")) {
 		t.Fatalf("expected no-data message, got:\n%s", out.String())
+	}
+}
+
+func TestRunProcessesWorkingDirWhenNoZipsButTakeoutContentDetected(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
+	hasTakeoutContent = func(string) (bool, error) { return true, nil }
+	extractArchiveFile = func(string, string) (int, error) {
+		t.Fatalf("did not expect extraction when processing existing content")
+		return 0, nil
+	}
+
+	var processedDir string
+	processTakeout = func(dir string, _ func(processor.ProgressEvent)) (processor.Report, error) {
+		processedDir = dir
+		return processor.Report{}, nil
+	}
+
+	cwd := t.TempDir()
+	var out bytes.Buffer
+	code := Run(cwd, &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success, got %d\n%s", code, out.String())
+	}
+	if processedDir != cwd {
+		t.Fatalf("expected process dir to be cwd, got %q", processedDir)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Processing existing Takeout content from working directory...")) {
+		t.Fatalf("expected processing-existing-content message, got:\n%s", out.String())
 	}
 }
 
@@ -899,6 +932,7 @@ func stubWizardDeps() func() {
 	origExtractArchiveFile := extractArchiveFile
 	origProcessTakeout := processTakeout
 	origRemoveFile := removeFile
+	origHasTakeoutContent := hasTakeoutContent
 
 	return func() {
 		checkDependencies = origCheckDependencies
@@ -911,5 +945,6 @@ func stubWizardDeps() func() {
 		extractArchiveFile = origExtractArchiveFile
 		processTakeout = origProcessTakeout
 		removeFile = origRemoveFile
+		hasTakeoutContent = origHasTakeoutContent
 	}
 }
