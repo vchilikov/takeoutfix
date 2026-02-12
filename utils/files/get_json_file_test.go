@@ -148,6 +148,59 @@ func TestGetJsonFile(t *testing.T) {
 			want:      "IMG_0001.jpg.s.json",
 		},
 		{
+			name:      "duplicate index prefers matching supplemental metadata",
+			mediaFile: "PIC_0003(1).JPG",
+			jsonFiles: map[string]struct{}{
+				"PIC_0003.JPG.supplemental-metadata.json":    {},
+				"PIC_0003.JPG.supplemental-metadata(1).json": {},
+			},
+			want: "PIC_0003.JPG.supplemental-metadata(1).json",
+		},
+		{
+			name:      "duplicate index keeps base supplemental metadata for non-duplicate media",
+			mediaFile: "PIC_0003.JPG",
+			jsonFiles: map[string]struct{}{
+				"PIC_0003.JPG.supplemental-metadata.json":    {},
+				"PIC_0003.JPG.supplemental-metadata(1).json": {},
+			},
+			want: "PIC_0003.JPG.supplemental-metadata.json",
+		},
+		{
+			name:      "duplicate index works with truncated supplemental suffix",
+			mediaFile: "IMG_20201010_194629_966(1).jpg",
+			jsonFiles: map[string]struct{}{
+				"IMG_20201010_194629_966.jpg.supplemental-metad.json":    {},
+				"IMG_20201010_194629_966.jpg.supplemental-metad(1).json": {},
+			},
+			want: "IMG_20201010_194629_966.jpg.supplemental-metad(1).json",
+		},
+		{
+			name:      "duplicate index works in basename fallback path",
+			mediaFile: "IMG_20201010_194629_966(1).png",
+			jsonFiles: map[string]struct{}{
+				"IMG_20201010_194629_966.jpg.supplemental-metad.json":    {},
+				"IMG_20201010_194629_966.jpg.supplemental-metad(1).json": {},
+			},
+			want: "IMG_20201010_194629_966.jpg.supplemental-metad(1).json",
+		},
+		{
+			name:      "explicit zero duplicate index does not match base supplemental metadata",
+			mediaFile: "20180905_180723(0).jpg",
+			jsonFiles: map[string]struct{}{
+				"20180905_180723.jpg.supplemental-metadata.json": {},
+			},
+			wantErr: true,
+		},
+		{
+			name:      "base media ignores explicit zero supplemental duplicate index",
+			mediaFile: "20180905_180723.jpg",
+			jsonFiles: map[string]struct{}{
+				"20180905_180723.jpg.supplemental-metadata.json":    {},
+				"20180905_180723.jpg.supplemental-metadata(0).json": {},
+			},
+			want: "20180905_180723.jpg.supplemental-metadata.json",
+		},
+		{
 			name:      "not found",
 			mediaFile: "missing.jpg",
 			jsonFiles: map[string]struct{}{},
