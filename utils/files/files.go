@@ -76,6 +76,8 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	for _, dir := range dirs {
 		dirJSON := jsonByDir[dir]
 		dirMediaSet := make(map[string]struct{}, len(mediaByDir[dir]))
+		localCandidatesByMedia := make(map[string]string, len(mediaByDir[dir]))
+		localCandidateClaims := make(map[string][]string)
 		for _, mediaFile := range mediaByDir[dir] {
 			dirMediaSet[mediaFile] = struct{}{}
 		}
@@ -88,6 +90,21 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 			}
 
 			jsonRel := joinRelPath(dir, jsonFile)
+			localCandidatesByMedia[mediaRel] = jsonRel
+			localCandidateClaims[jsonRel] = append(localCandidateClaims[jsonRel], mediaRel)
+		}
+
+		for _, mediaFile := range mediaByDir[dir] {
+			mediaRel := joinRelPath(dir, mediaFile)
+			jsonRel, ok := localCandidatesByMedia[mediaRel]
+			if !ok {
+				continue
+			}
+			if len(localCandidateClaims[jsonRel]) > 1 {
+				unresolvedMedia = append(unresolvedMedia, mediaRel)
+				continue
+			}
+
 			result.Pairs[mediaRel] = jsonRel
 			usedJSON[jsonRel] = struct{}{}
 		}
@@ -109,14 +126,28 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	sort.Strings(unresolvedMedia)
 	globalCandidatesByMedia := make(map[string][]string, len(unresolvedMedia))
 	globalCandidateUsage := make(map[string]int)
+	globalCandidateClaims := make(map[string][]string)
 
 	for _, mediaRel := range unresolvedMedia {
 		keys := mediaLookupKeys(filepath.Base(mediaRel))
 		candidates := collectGlobalCandidates(keys, globalIndex, usedJSON)
+		candidates = applyGlobalCandidateRules(mediaRel, candidates)
 		globalCandidatesByMedia[mediaRel] = candidates
 
 		if len(candidates) == 1 {
-			globalCandidateUsage[candidates[0]]++
+			candidate := candidates[0]
+			globalCandidateUsage[candidate]++
+			globalCandidateClaims[candidate] = append(globalCandidateClaims[candidate], mediaRel)
+		}
+	}
+
+	globalCandidateWinner := make(map[string]string)
+	for candidate, claims := range globalCandidateClaims {
+		if len(claims) <= 1 {
+			continue
+		}
+		if winner, ok := uniqueSameDirClaimant(candidate, claims); ok {
+			globalCandidateWinner[candidate] = winner
 		}
 	}
 
@@ -128,6 +159,15 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 		case 1:
 			candidate := candidates[0]
 			if globalCandidateUsage[candidate] > 1 {
+				winner, ok := globalCandidateWinner[candidate]
+				if !ok || winner != mediaRel {
+					result.AmbiguousJSON[mediaRel] = candidates
+					continue
+				}
+			}
+			// Defensive guard: candidates are precomputed before assignment, so keep
+			// this check to avoid double-claiming if future rule changes reintroduce overlaps.
+			if _, alreadyUsed := usedJSON[candidate]; alreadyUsed {
 				result.AmbiguousJSON[mediaRel] = candidates
 				continue
 			}
@@ -169,6 +209,58 @@ func collectGlobalCandidates(keys []string, globalIndex map[string][]string, use
 	}
 	sort.Strings(candidates)
 	return candidates
+}
+
+func applyGlobalCandidateRules(mediaRel string, candidates []string) []string {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+
+	filteredByIndex := filterCandidatesByDuplicateIndex(mediaRel, candidates)
+	if len(filteredByIndex) == 1 {
+		return filteredByIndex
+	}
+	if len(filteredByIndex) > 1 {
+		candidates = filteredByIndex
+	}
+
+	sameDir := filterCandidatesBySameDir(mediaRel, candidates)
+	if len(sameDir) == 1 {
+		return sameDir
+	}
+
+	// If same-dir narrowing finds none or several matches, keep the current
+	// candidate set unchanged and let ambiguity handling decide later.
+	return candidates
+}
+
+func filterCandidatesBySameDir(mediaRel string, candidates []string) []string {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+
+	mediaDir := filepath.Dir(mediaRel)
+	filtered := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if filepath.Dir(candidate) == mediaDir {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
+}
+
+func uniqueSameDirClaimant(candidate string, claims []string) (string, bool) {
+	candidateDir := filepath.Dir(candidate)
+	sameDirClaims := make([]string, 0, len(claims))
+	for _, mediaRel := range claims {
+		if filepath.Dir(mediaRel) == candidateDir {
+			sameDirClaims = append(sameDirClaims, mediaRel)
+		}
+	}
+	if len(sameDirClaims) != 1 {
+		return "", false
+	}
+	return sameDirClaims[0], true
 }
 
 func mediaLookupKeys(mediaFile string) []string {

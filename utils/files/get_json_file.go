@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/vchilikov/takeout-fix/internal/mediaext"
@@ -15,14 +17,15 @@ var randomSuffixRe = regexp.MustCompile(`-[a-z0-9]{5}$`)
 const supplementalFull = ".supplemental-metadata"
 
 var trailingNumberSuffixRe = regexp.MustCompile(`\(\d+\)$`)
+var duplicateIndexSuffixRe = regexp.MustCompile(`\((\d+)\)$`)
 
 func getJsonFile(mediaFile string, jsonFiles map[string]struct{}, mediaFiles map[string]struct{}) (string, error) {
-	if jsonFile, ok := findJSONByStem(mediaFile, jsonFiles); ok {
+	if jsonFile, ok := findJSONByStemForMedia(mediaFile, mediaFile, jsonFiles); ok {
 		return jsonFile, nil
 	}
 
 	baseMediaFile := strings.TrimSuffix(mediaFile, filepath.Ext(mediaFile))
-	if jsonFile, ok := findJSONByStem(baseMediaFile, jsonFiles); ok {
+	if jsonFile, ok := findJSONByStemForMedia(mediaFile, baseMediaFile, jsonFiles); ok {
 		return jsonFile, nil
 	}
 
@@ -33,7 +36,7 @@ func getJsonFile(mediaFile string, jsonFiles map[string]struct{}, mediaFiles map
 	if numberSuffixRe.MatchString(mediaFile) {
 		match := numberSuffixRe.FindString(mediaFile)
 		jsonStem := strings.Replace(mediaFile, match, "", 1) + match
-		jsonFile, ok := findJSONByStem(jsonStem, jsonFiles)
+		jsonFile, ok := findJSONByStemForMedia(mediaFile, jsonStem, jsonFiles)
 		if ok {
 			return jsonFile, nil
 		}
@@ -42,14 +45,14 @@ func getJsonFile(mediaFile string, jsonFiles map[string]struct{}, mediaFiles map
 	if len(mediaFile) > 46 && numberSuffixRe.MatchString(mediaFile) {
 		match := numberSuffixRe.FindString(mediaFile)
 		jsonStem := mediaFile[:46] + match
-		jsonFile, ok := findJSONByStem(jsonStem, jsonFiles)
+		jsonFile, ok := findJSONByStemForMedia(mediaFile, jsonStem, jsonFiles)
 		if ok {
 			return jsonFile, nil
 		}
 	}
 
 	if len(mediaFile) > 46 {
-		jsonFile, ok := findJSONByStem(mediaFile[:46], jsonFiles)
+		jsonFile, ok := findJSONByStemForMedia(mediaFile, mediaFile[:46], jsonFiles)
 		if ok {
 			return jsonFile, nil
 		}
@@ -61,23 +64,23 @@ func getJsonFile(mediaFile string, jsonFiles map[string]struct{}, mediaFiles map
 		extensions := [...]string{".jpg", ".jpeg", ".heic"}
 		for _, ext := range extensions {
 			jsonStem := baseMediaFile + ext
-			jsonFile, ok := findJSONByStem(jsonStem, jsonFiles)
+			jsonFile, ok := findJSONByStemForMedia(mediaFile, jsonStem, jsonFiles)
 			if ok {
 				return jsonFile, nil
 			}
-			jsonFileUpper, ok := findJSONByStem(baseMediaFile+strings.ToUpper(ext), jsonFiles)
+			jsonFileUpper, ok := findJSONByStemForMedia(mediaFile, baseMediaFile+strings.ToUpper(ext), jsonFiles)
 			if ok {
 				return jsonFileUpper, nil
 			}
 		}
 	}
 
-	if jsonFile, ok := findJSONByBasename(mediaFile, jsonFiles, false); ok {
+	if jsonFile, ok := findJSONByBasenameForMedia(mediaFile, jsonFiles, false); ok {
 		return jsonFile, nil
 	}
 
 	if shouldUseRandomSuffixFallback(mediaFile, mediaFiles) {
-		if jsonFile, ok := findJSONByBasename(mediaFile, jsonFiles, true); ok {
+		if jsonFile, ok := findJSONByBasenameForMedia(mediaFile, jsonFiles, true); ok {
 			return jsonFile, nil
 		}
 	}
@@ -85,13 +88,22 @@ func getJsonFile(mediaFile string, jsonFiles map[string]struct{}, mediaFiles map
 	return "", fmt.Errorf("json file not found for %s", mediaFile)
 }
 
-func findJSONByStem(stem string, jsonFiles map[string]struct{}) (string, bool) {
+func findJSONByStemForMedia(mediaFile string, stem string, jsonFiles map[string]struct{}) (string, bool) {
 	if jsonFile, ok := findJSONCaseInsensitive(stem+".json", jsonFiles); ok {
 		return jsonFile, true
 	}
 
+	candidates := findSupplementalJSONByStem(stem, jsonFiles)
+	candidates = filterCandidatesByDuplicateIndex(mediaFile, candidates)
+	if len(candidates) != 1 {
+		return "", false
+	}
+	return candidates[0], true
+}
+
+func findSupplementalJSONByStem(stem string, jsonFiles map[string]struct{}) []string {
 	lowerStem := strings.ToLower(stem)
-	var matches []string
+	unique := make(map[string]struct{})
 	for jsonFile := range jsonFiles {
 		lower := strings.ToLower(jsonFile)
 		if !strings.HasSuffix(lower, ".json") {
@@ -104,14 +116,16 @@ func findJSONByStem(stem string, jsonFiles map[string]struct{}) (string, bool) {
 		}
 		suffix := base[len(lowerStem):]
 		if isSupplementalPrefix(suffix) {
-			matches = append(matches, jsonFile)
+			unique[jsonFile] = struct{}{}
 		}
 	}
 
-	if len(matches) != 1 {
-		return "", false
+	matches := make([]string, 0, len(unique))
+	for jsonFile := range unique {
+		matches = append(matches, jsonFile)
 	}
-	return matches[0], true
+	sort.Strings(matches)
+	return matches
 }
 
 func findJSONCaseInsensitive(name string, jsonFiles map[string]struct{}) (string, bool) {
@@ -123,7 +137,16 @@ func findJSONCaseInsensitive(name string, jsonFiles map[string]struct{}) (string
 	return "", false
 }
 
-func findJSONByBasename(mediaFile string, jsonFiles map[string]struct{}, stripRandomSuffix bool) (string, bool) {
+func findJSONByBasenameForMedia(mediaFile string, jsonFiles map[string]struct{}, stripRandomSuffix bool) (string, bool) {
+	matches := findJSONCandidatesByBasename(mediaFile, jsonFiles, stripRandomSuffix)
+	matches = filterCandidatesByDuplicateIndex(mediaFile, matches)
+	if len(matches) != 1 {
+		return "", false
+	}
+	return matches[0], true
+}
+
+func findJSONCandidatesByBasename(mediaFile string, jsonFiles map[string]struct{}, stripRandomSuffix bool) []string {
 	mediaKey := normalizeMediaLookupKeyWithOptions(mediaFile, stripRandomSuffix)
 	var matches []string
 
@@ -136,12 +159,72 @@ func findJSONByBasename(mediaFile string, jsonFiles map[string]struct{}, stripRa
 			matches = append(matches, jsonFile)
 		}
 	}
+	sort.Strings(matches)
+	return matches
+}
 
-	if len(matches) != 1 {
-		return "", false
+func filterCandidatesByDuplicateIndex(mediaFile string, candidates []string) []string {
+	if len(candidates) == 0 {
+		return candidates
 	}
 
-	return matches[0], true
+	mediaIndex, mediaHasExplicitIndex := extractMediaDuplicateIndexInfo(mediaFile)
+	filtered := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		jsonIndex, jsonHasExplicitIndex := extractJSONDuplicateIndexInfo(candidate)
+		switch {
+		case mediaHasExplicitIndex:
+			// Duplicate media (including "(0)") must match the same explicit
+			// duplicate index in sidecar naming.
+			if jsonHasExplicitIndex && jsonIndex == mediaIndex {
+				filtered = append(filtered, candidate)
+			}
+		default:
+			// Base media (without "(n)") prefers base sidecar naming.
+			if !jsonHasExplicitIndex {
+				filtered = append(filtered, candidate)
+			}
+		}
+	}
+
+	if len(filtered) == 0 {
+		if mediaHasExplicitIndex {
+			return nil
+		}
+		return candidates
+	}
+	sort.Strings(filtered)
+	return filtered
+}
+
+func extractMediaDuplicateIndexInfo(mediaFile string) (int, bool) {
+	name := filepath.Base(mediaFile)
+	ext := filepath.Ext(name)
+	if ext != "" {
+		name = strings.TrimSuffix(name, ext)
+	}
+	return extractTrailingDuplicateIndexInfo(name)
+}
+
+func extractJSONDuplicateIndexInfo(jsonFile string) (int, bool) {
+	name := filepath.Base(jsonFile)
+	ext := filepath.Ext(name)
+	if strings.EqualFold(ext, ".json") {
+		name = strings.TrimSuffix(name, ext)
+	}
+	return extractTrailingDuplicateIndexInfo(name)
+}
+
+func extractTrailingDuplicateIndexInfo(name string) (int, bool) {
+	match := duplicateIndexSuffixRe.FindStringSubmatch(name)
+	if len(match) < 2 {
+		return 0, false
+	}
+	index, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, false
+	}
+	return index, true
 }
 
 func removeRandomSuffix(mediaFile string) string {
