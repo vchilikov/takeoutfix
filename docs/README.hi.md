@@ -3,7 +3,7 @@
 महत्वपूर्ण मेटाडेटा खोए बिना अपनी Google Photos लाइब्रेरी माइग्रेट करें।
 TakeoutFix Google Takeout ZIP फाइलों को प्रोसेस करता है और capture date, location, और description जैसी जानकारी वापस लिखता है।
 
-[English](README.md) · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [हिन्दी](README.hi.md) · [Español](README.es.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Deutsch](README.de.md)
+[English](../README.md) · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [हिन्दी](README.hi.md) · [Español](README.es.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Deutsch](README.de.md)
 
 ## TakeoutFix क्यों
 

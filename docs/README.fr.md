@@ -3,7 +3,7 @@
 Migrez votre bibliothèque Google Photos sans perdre de métadonnées importantes.
 TakeoutFix traite les archives ZIP Google Takeout et restaure des champs comme la date de prise de vue, la localisation et la description.
 
-[English](README.md) · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [हिन्दी](README.hi.md) · [Español](README.es.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Deutsch](README.de.md)
+[English](../README.md) · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [हिन्दी](README.hi.md) · [Español](README.es.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Deutsch](README.de.md)
 
 ## Pourquoi TakeoutFix
 

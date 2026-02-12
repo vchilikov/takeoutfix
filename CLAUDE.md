@@ -9,13 +9,16 @@ TakeoutFix is a Go CLI tool that restores metadata (capture date, GPS location, 
 ## Build & Development Commands
 
 ```bash
-make check          # Default: fmt-check + vet + test + build
-make check-all      # check + race tests + lint + goreleaser check
-make fmt            # Auto-format all Go files
-make test           # Run all tests
-make test-race      # Run tests with race detector
-make build          # Build binary: ./takeoutfix
-make lint           # Run golangci-lint (skipped if not installed)
+make check            # Default: fmt-check + vet + test + build
+make check-all        # check + race tests + lint + goreleaser check
+make fmt              # Auto-format all Go files
+make fmt-check        # Check formatting without modifying files
+make test             # Run all tests
+make test-race        # Run tests with race detector
+make build            # Build binary: ./takeoutfix
+make lint             # Run golangci-lint (skipped if not installed)
+make tools            # Install golangci-lint + goreleaser via Homebrew
+make ci               # Alias for check (used in CI)
 
 # Run a single test
 go test ./internal/preflight/ -run TestCheckDiskSpace
@@ -33,7 +36,7 @@ The wizard (`internal/wizard/flow.go`) orchestrates a sequential pipeline:
 1. **Dependency check** (`internal/preflight/deps.go`) — finds `exiftool` in PATH; offers auto-install per platform
 2. **ZIP discovery** (`internal/preflight/zipcheck.go`) — finds `.zip` files in the working directory
 3. **ZIP validation** (`internal/preflight/zipcheck.go`) — parallel integrity check across all CPU cores
-4. **Disk space check** (`internal/preflight/disk.go`) — estimates required space; offers "delete mode" (removes ZIPs after extraction) if tight
+4. **Disk space check** (`internal/preflight/disk.go`) — estimates required space; auto-delete is always on — in low-space mode ZIPs are deleted immediately after extraction, otherwise deferred until all processing succeeds
 5. **State load** (`internal/state/state.go`) — loads `.takeoutfix/state.json` to skip already-extracted archives on re-runs (fingerprint = size:modtime)
 6. **Extraction** (`internal/extract/zip.go`) — extracts to `takeoutfix-extracted/`; saves state after each archive
 7. **Metadata processing** (`internal/processor/processor.go`) — parallel per-file processing:
@@ -46,6 +49,9 @@ The wizard (`internal/wizard/flow.go`) orchestrates a sequential pipeline:
 - **Dependency injection via package-level vars** — `internal/wizard/flow.go` declares `var checkDependencies = preflight.CheckDependencies` etc. Tests override these vars to inject mocks without any framework.
 - **exiftool session pooling** — `internal/exiftool/session.go` keeps a single `exiftool -stay_open True` process alive across many files for performance, with fallback to per-file invocation on error.
 - **Platform-specific files** — `disk_unix.go` / `disk_windows.go` use build tags for OS-specific disk space queries via `golang.org/x/sys`.
+- **Corrupt EXIF recovery** — `utils/metadata/` detects corrupt EXIF data (e.g. Samsung-specific errors), strips it, then reapplies metadata cleanly.
+- **XMP sidecar fallback** — for media formats that don't support embedded metadata, an `.xmp` sidecar file is written instead.
+- **QuickTime dates for HEIC/HEIF** — `FileCreateDate` and QuickTime date fields are written on macOS; failures are silently tolerated on other platforms.
 
 ### Package Layout
 
@@ -58,6 +64,7 @@ The wizard (`internal/wizard/flow.go`) orchestrates a sequential pipeline:
 - `internal/exiftool/` — interactive exiftool process session management
 - `internal/exifcmd/` — exiftool binary resolution
 - `internal/patharg/` — safe path escaping for exiftool arguments
+- `internal/mediaext/` — supported media file extension registry
 - `utils/files/` — recursive Takeout directory scanning and media-JSON pairing
 - `utils/extensions/` — file extension detection and correction
 - `utils/metadata/` — exiftool command building for metadata application
@@ -66,7 +73,7 @@ The wizard (`internal/wizard/flow.go`) orchestrates a sequential pipeline:
 
 - `0` — success
 - `2` — preflight failure (missing deps, corrupt ZIPs, no space)
-- `3` — runtime failure
+- `3` — runtime failure (includes `PARTIAL_SUCCESS` when hard processing errors occur — ZIPs are kept for rerun)
 
 ## Dependencies
 

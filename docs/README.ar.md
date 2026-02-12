@@ -3,7 +3,7 @@
 انقل مكتبة Google Photos الخاصة بك بدون فقدان البيانات الوصفية المهمة.
 يقوم TakeoutFix بمعالجة ملفات ZIP من Google Takeout واستعادة معلومات مثل تاريخ الالتقاط والموقع والوصف.
 
-[English](README.md) · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [हिन्दी](README.hi.md) · [Español](README.es.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Deutsch](README.de.md)
+[English](../README.md) · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [हिन्दी](README.hi.md) · [Español](README.es.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Deutsch](README.de.md)
 
 ## لماذا TakeoutFix
 

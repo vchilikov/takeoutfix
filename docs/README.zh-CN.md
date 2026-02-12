@@ -3,7 +3,7 @@
 无需丢失重要元数据，即可迁移你的 Google Photos 照片库。
 TakeoutFix 会处理 Google Takeout ZIP 压缩包，并恢复拍摄日期、位置和描述等信息。
 
-[English](README.md) · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [हिन्दी](README.hi.md) · [Español](README.es.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Deutsch](README.de.md)
+[English](../README.md) · [Русский](README.ru.md) · [中文](README.zh-CN.md) · [हिन्दी](README.hi.md) · [Español](README.es.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Deutsch](README.de.md)
 
 ## 为什么选择 TakeoutFix
 
