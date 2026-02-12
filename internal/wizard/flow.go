@@ -28,7 +28,7 @@ var (
 	discoverZips       = preflight.DiscoverTopLevelZips
 	validateAll        = preflight.ValidateAll
 	checkDiskSpace     = preflight.CheckDiskSpace
-	hasTakeoutContent  = preflight.HasProcessableTakeout
+	detectTakeoutRoot  = preflight.DetectProcessableTakeoutRoot
 	loadState          = state.Load
 	saveState          = state.Save
 	shouldSkip         = state.ShouldSkipExtraction
@@ -284,7 +284,7 @@ func resolveNoZipProcessRoot(cwd string, extractedRoot string) (string, string, 
 		return "", "", false, fmt.Errorf("access extracted data path %q: %w", extractedRoot, err)
 	}
 
-	processable, detectErr := hasTakeoutContent(cwd)
+	processRoot, processable, detectErr := detectTakeoutRoot(cwd)
 	if detectErr != nil {
 		return "", "", false, fmt.Errorf("detect extracted takeout content: %w", detectErr)
 	}
@@ -292,7 +292,7 @@ func resolveNoZipProcessRoot(cwd string, extractedRoot string) (string, string, 
 		return "", "No ZIP archives found and no extracted data.", true, nil
 	}
 
-	return cwd, "No ZIP archives found. Processing existing Takeout content from working directory...", false, nil
+	return processRoot, fmt.Sprintf("No ZIP archives found. Processing existing Takeout content from: %s", processRoot), false, nil
 }
 
 func progressPercent(done int, total int) int {

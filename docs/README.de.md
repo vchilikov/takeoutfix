@@ -62,7 +62,7 @@ Nach erfolgreichem Lauf:
 - Deine verarbeiteten Dateien liegen in `./takeoutfix-extracted/Takeout`.
 - Metadaten werden auf unterstuetzte Fotos und Videos angewendet.
 - JSON-`Tags` werden in `Keywords` und `Subject` geschrieben.
-- Wenn der JSON-Zeitstempel fehlt/ungueltig ist und der Dateiname mit `YYYY-MM-DD HH.MM.SS` beginnt, wird das Datum aus dem Dateinamen wiederhergestellt.
+- Wenn der Aufnahme-Zeitstempel im JSON fehlt oder ungueltig ist und der Dateiname mit `YYYY-MM-DD HH.MM.SS` beginnt, wird das Datum aus dem Dateinamen wiederhergestellt.
 - Du kannst `./takeoutfix-extracted/Takeout` in deinen neuen Speicher hochladen.
 
 ## Haeufige Probleme

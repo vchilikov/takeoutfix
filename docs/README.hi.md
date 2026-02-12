@@ -62,7 +62,7 @@ Windows (PowerShell):
 - Processed files `./takeoutfix-extracted/Takeout` में मिलेंगी।
 - Supported photos और videos में metadata apply हो जाएगा।
 - JSON के `Tags` को `Keywords` और `Subject` में लिखा जाएगा।
-- अगर JSON में `photoTakenTime.timestamp` missing या invalid है, और filename `YYYY-MM-DD HH.MM.SS` से शुरू होता है, तो date filename से restore की जाएगी।
+- अगर JSON में capture timestamp missing या invalid है और filename `YYYY-MM-DD HH.MM.SS` से शुरू होता है, तो date filename से restore की जाएगी।
 - आप `./takeoutfix-extracted/Takeout` को अपने नए storage में upload कर सकते हैं।
 
 ## Common Issues

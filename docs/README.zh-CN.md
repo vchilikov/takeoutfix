@@ -62,7 +62,7 @@ Windows (PowerShell):
 - 处理后的媒体文件位于 `./takeoutfix-extracted/Takeout`。
 - 支持的照片和视频会写入元数据。
 - JSON 中的 `Tags` 会写入 `Keywords` 和 `Subject`。
-- 如果 JSON 中的 `photoTakenTime.timestamp` 缺失或无效，且文件名以 `YYYY-MM-DD HH.MM.SS` 开头，会从文件名恢复日期。
+- 如果 JSON 中的拍摄时间戳缺失或无效，且文件名以 `YYYY-MM-DD HH.MM.SS` 开头，会从文件名恢复日期。
 - 你可以将 `./takeoutfix-extracted/Takeout` 上传到新的云存储。
 
 ## 常见问题

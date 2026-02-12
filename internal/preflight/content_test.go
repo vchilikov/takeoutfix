@@ -2,93 +2,215 @@ package preflight
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-	"time"
+
+	"github.com/vchilikov/takeout-fix/utils/files"
 )
 
-func TestHasProcessableTakeout_TrueWhenMediaExists(t *testing.T) {
-	restore := stubContentWalker()
+func TestDetectProcessableTakeoutRoot_TrueForNestedTakeoutWithPairs(t *testing.T) {
+	restore := stubContentDeps()
+	defer restore()
+
+	cwd := t.TempDir()
+	takeoutRoot := filepath.Join(cwd, "Takeout")
+	if err := os.MkdirAll(takeoutRoot, 0o755); err != nil {
+		t.Fatalf("mkdir takeout: %v", err)
+	}
+
+	scanCalls := 0
+	scanTakeoutContent = func(path string) (files.MediaScanResult, error) {
+		scanCalls++
+		if path != takeoutRoot {
+			t.Fatalf("unexpected scan path: got %q, want %q", path, takeoutRoot)
+		}
+		return files.MediaScanResult{
+			Pairs: map[string]string{"Takeout/photo.jpg": "Takeout/photo.jpg.json"},
+		}, nil
+	}
+
+	root, ok, err := DetectProcessableTakeoutRoot(cwd)
+	if err != nil {
+		t.Fatalf("DetectProcessableTakeoutRoot error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected ok=true")
+	}
+	if root != takeoutRoot {
+		t.Fatalf("unexpected root: got %q, want %q", root, takeoutRoot)
+	}
+	if scanCalls != 1 {
+		t.Fatalf("expected one scan call, got %d", scanCalls)
+	}
+}
+
+func TestDetectProcessableTakeoutRoot_TrueWhenPathIsTakeoutDir(t *testing.T) {
+	restore := stubContentDeps()
+	defer restore()
+
+	parent := t.TempDir()
+	takeoutRoot := filepath.Join(parent, "Takeout")
+	if err := os.MkdirAll(takeoutRoot, 0o755); err != nil {
+		t.Fatalf("mkdir takeout: %v", err)
+	}
+
+	scanTakeoutContent = func(path string) (files.MediaScanResult, error) {
+		if path != takeoutRoot {
+			t.Fatalf("unexpected scan path: got %q, want %q", path, takeoutRoot)
+		}
+		return files.MediaScanResult{
+			Pairs: map[string]string{"photo.jpg": "photo.jpg.json"},
+		}, nil
+	}
+
+	root, ok, err := DetectProcessableTakeoutRoot(takeoutRoot)
+	if err != nil {
+		t.Fatalf("DetectProcessableTakeoutRoot error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected ok=true")
+	}
+	if root != takeoutRoot {
+		t.Fatalf("unexpected root: got %q, want %q", root, takeoutRoot)
+	}
+}
+
+func TestDetectProcessableTakeoutRoot_FalseForArbitraryMediaFolder(t *testing.T) {
+	restore := stubContentDeps()
 	defer restore()
 
 	root := t.TempDir()
 	writeFile(t, root, "photo.jpg")
+	writeFile(t, root, "photo.jpg.json")
 
-	ok, err := HasProcessableTakeout(root)
-	if err != nil {
-		t.Fatalf("HasProcessableTakeout error: %v", err)
+	scanCalled := false
+	scanTakeoutContent = func(string) (files.MediaScanResult, error) {
+		scanCalled = true
+		return files.MediaScanResult{}, nil
 	}
-	if !ok {
-		t.Fatalf("expected true when media exists")
-	}
-}
 
-func TestHasProcessableTakeout_FalseWithoutMedia(t *testing.T) {
-	restore := stubContentWalker()
-	defer restore()
-
-	root := t.TempDir()
-	writeFile(t, root, "orphan.json")
-	writeFile(t, root, "notes.txt")
-
-	ok, err := HasProcessableTakeout(root)
+	detected, ok, err := DetectProcessableTakeoutRoot(root)
 	if err != nil {
-		t.Fatalf("HasProcessableTakeout error: %v", err)
+		t.Fatalf("DetectProcessableTakeoutRoot error: %v", err)
 	}
 	if ok {
-		t.Fatalf("expected false when no supported media exists")
+		t.Fatalf("expected ok=false")
+	}
+	if detected != "" {
+		t.Fatalf("expected empty detected root, got %q", detected)
+	}
+	if scanCalled {
+		t.Fatalf("did not expect scan call when Takeout marker is absent")
 	}
 }
 
-func TestHasProcessableTakeout_PropagatesWalkError(t *testing.T) {
-	restore := stubContentWalker()
+func TestDetectProcessableTakeoutRoot_FalseWhenNoPairs(t *testing.T) {
+	restore := stubContentDeps()
 	defer restore()
 
-	walkDirForContent = func(string, fs.WalkDirFunc) error {
-		return errors.New("walk failed")
+	cwd := t.TempDir()
+	takeoutRoot := filepath.Join(cwd, "Takeout")
+	if err := os.MkdirAll(takeoutRoot, 0o755); err != nil {
+		t.Fatalf("mkdir takeout: %v", err)
 	}
 
-	ok, err := HasProcessableTakeout(t.TempDir())
+	scanTakeoutContent = func(path string) (files.MediaScanResult, error) {
+		return files.MediaScanResult{
+			Pairs: make(map[string]string),
+		}, nil
+	}
+
+	detected, ok, err := DetectProcessableTakeoutRoot(cwd)
+	if err != nil {
+		t.Fatalf("DetectProcessableTakeoutRoot error: %v", err)
+	}
+	if ok {
+		t.Fatalf("expected ok=false")
+	}
+	if detected != "" {
+		t.Fatalf("expected empty detected root, got %q", detected)
+	}
+}
+
+func TestDetectProcessableTakeoutRoot_PropagatesScanError(t *testing.T) {
+	restore := stubContentDeps()
+	defer restore()
+
+	cwd := t.TempDir()
+	takeoutRoot := filepath.Join(cwd, "Takeout")
+	if err := os.MkdirAll(takeoutRoot, 0o755); err != nil {
+		t.Fatalf("mkdir takeout: %v", err)
+	}
+
+	scanTakeoutContent = func(string) (files.MediaScanResult, error) {
+		return files.MediaScanResult{}, errors.New("scan failed")
+	}
+
+	detected, ok, err := DetectProcessableTakeoutRoot(cwd)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
 	if ok {
-		t.Fatalf("expected false on error")
+		t.Fatalf("expected ok=false on error")
+	}
+	if detected != "" {
+		t.Fatalf("expected empty detected root on error, got %q", detected)
 	}
 }
 
-func TestHasProcessableTakeout_StopsOnFirstMedia(t *testing.T) {
-	restore := stubContentWalker()
+func TestDetectProcessableTakeoutRoot_PropagatesStatError(t *testing.T) {
+	restore := stubContentDeps()
 	defer restore()
 
-	walkCalls := 0
-	walkDirForContent = func(path string, fn fs.WalkDirFunc) error {
-		walkCalls++
-		err := fn(filepath.Join(path, "photo.jpg"), fakeDirEntry{name: "photo.jpg"}, nil)
-		if !errors.Is(err, errFoundMedia) {
-			t.Fatalf("expected early-exit marker, got %v", err)
-		}
-		return err
+	scanTakeoutContent = func(string) (files.MediaScanResult, error) {
+		t.Fatalf("did not expect scan call on stat error")
+		return files.MediaScanResult{}, nil
+	}
+	statPathForContent = func(string) (os.FileInfo, error) {
+		return nil, errors.New("stat failed")
 	}
 
-	ok, err := HasProcessableTakeout("/tmp/work")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	_, _, err := DetectProcessableTakeoutRoot(t.TempDir())
+	if err == nil {
+		t.Fatalf("expected error")
 	}
-	if !ok {
-		t.Fatalf("expected true when first walked file is media")
-	}
-	if walkCalls != 1 {
-		t.Fatalf("expected walker call once, got %d", walkCalls)
+	if !strings.Contains(err.Error(), "stat failed") {
+		t.Fatalf("expected stat error, got %v", err)
 	}
 }
 
-func stubContentWalker() func() {
-	orig := walkDirForContent
+func TestHasProcessableTakeout_UsesDetectedRoot(t *testing.T) {
+	restore := stubContentDeps()
+	defer restore()
+
+	cwd := t.TempDir()
+	takeoutRoot := filepath.Join(cwd, "Takeout")
+	if err := os.MkdirAll(takeoutRoot, 0o755); err != nil {
+		t.Fatalf("mkdir takeout: %v", err)
+	}
+	scanTakeoutContent = func(string) (files.MediaScanResult, error) {
+		return files.MediaScanResult{
+			Pairs: map[string]string{"Takeout/photo.jpg": "Takeout/photo.jpg.json"},
+		}, nil
+	}
+
+	ok, err := HasProcessableTakeout(cwd)
+	if err != nil {
+		t.Fatalf("HasProcessableTakeout error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected ok=true")
+	}
+}
+
+func stubContentDeps() func() {
+	origScanTakeoutContent := scanTakeoutContent
+	origStatPathForContent := statPathForContent
 	return func() {
-		walkDirForContent = orig
+		scanTakeoutContent = origScanTakeoutContent
+		statPathForContent = origStatPathForContent
 	}
 }
 
@@ -102,23 +224,3 @@ func writeFile(t *testing.T, root string, rel string) {
 		t.Fatalf("write %s: %v", rel, err)
 	}
 }
-
-type fakeDirEntry struct {
-	name string
-}
-
-func (f fakeDirEntry) Name() string               { return f.name }
-func (f fakeDirEntry) IsDir() bool                { return false }
-func (f fakeDirEntry) Type() fs.FileMode          { return 0 }
-func (f fakeDirEntry) Info() (fs.FileInfo, error) { return fakeFileInfo(f), nil }
-
-type fakeFileInfo struct {
-	name string
-}
-
-func (f fakeFileInfo) Name() string       { return f.name }
-func (f fakeFileInfo) Size() int64        { return 0 }
-func (f fakeFileInfo) Mode() fs.FileMode  { return 0 }
-func (f fakeFileInfo) ModTime() time.Time { return time.Time{} }
-func (f fakeFileInfo) IsDir() bool        { return false }
-func (f fakeFileInfo) Sys() any           { return nil }

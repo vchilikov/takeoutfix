@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -520,7 +521,7 @@ func TestRunFailsWhenNoZipsAndNoExtractedDir(t *testing.T) {
 
 	checkDependencies = func() []preflight.Dependency { return nil }
 	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
-	hasTakeoutContent = func(string) (bool, error) { return false, nil }
+	detectTakeoutRoot = func(string) (string, bool, error) { return "", false, nil }
 
 	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
 		t.Fatalf("process should not be called when no zips and no extracted dir")
@@ -554,13 +555,20 @@ func TestResolveNoZipProcessRoot_StatErrorIncludesPath(t *testing.T) {
 	}
 }
 
-func TestRunProcessesWorkingDirWhenNoZipsButTakeoutContentDetected(t *testing.T) {
+func TestRunProcessesDetectedTakeoutRootWhenNoZips(t *testing.T) {
 	restore := stubWizardDeps()
 	defer restore()
 
 	checkDependencies = func() []preflight.Dependency { return nil }
 	discoverZips = func(string) ([]preflight.ZipArchive, error) { return nil, nil }
-	hasTakeoutContent = func(string) (bool, error) { return true, nil }
+	cwd := t.TempDir()
+	detectedRoot := filepath.Join(cwd, "Takeout")
+	detectTakeoutRoot = func(path string) (string, bool, error) {
+		if path != cwd {
+			t.Fatalf("unexpected detect path: %q", path)
+		}
+		return detectedRoot, true, nil
+	}
 	extractArchiveFile = func(string, string) (int, error) {
 		t.Fatalf("did not expect extraction when processing existing content")
 		return 0, nil
@@ -572,16 +580,15 @@ func TestRunProcessesWorkingDirWhenNoZipsButTakeoutContentDetected(t *testing.T)
 		return processor.Report{}, nil
 	}
 
-	cwd := t.TempDir()
 	var out bytes.Buffer
 	code := Run(cwd, &out)
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
-	if processedDir != cwd {
-		t.Fatalf("expected process dir to be cwd, got %q", processedDir)
+	if processedDir != detectedRoot {
+		t.Fatalf("expected process dir to be detected root, got %q", processedDir)
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Processing existing Takeout content from working directory...")) {
+	if !bytes.Contains(out.Bytes(), []byte("Processing existing Takeout content from: "+detectedRoot)) {
 		t.Fatalf("expected processing-existing-content message, got:\n%s", out.String())
 	}
 }
@@ -950,7 +957,7 @@ func stubWizardDeps() func() {
 	origExtractArchiveFile := extractArchiveFile
 	origProcessTakeout := processTakeout
 	origRemoveFile := removeFile
-	origHasTakeoutContent := hasTakeoutContent
+	origDetectTakeoutRoot := detectTakeoutRoot
 
 	return func() {
 		checkDependencies = origCheckDependencies
@@ -963,6 +970,6 @@ func stubWizardDeps() func() {
 		extractArchiveFile = origExtractArchiveFile
 		processTakeout = origProcessTakeout
 		removeFile = origRemoveFile
-		hasTakeoutContent = origHasTakeoutContent
+		detectTakeoutRoot = origDetectTakeoutRoot
 	}
 }

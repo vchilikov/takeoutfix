@@ -62,7 +62,7 @@ Après une exécution réussie :
 - Vos médias traités se trouvent dans `./takeoutfix-extracted/Takeout`.
 - Les métadonnées sont appliquées aux photos et vidéos prises en charge.
 - Les `Tags` JSON sont écrits dans `Keywords` et `Subject`.
-- Si `photoTakenTime.timestamp` est absent ou invalide et que le nom de fichier commence par `YYYY-MM-DD HH.MM.SS`, la date est restaurée depuis le nom de fichier.
+- Si l'horodatage de prise de vue dans le JSON est absent ou invalide et que le nom de fichier commence par `YYYY-MM-DD HH.MM.SS`, la date est restaurée depuis le nom de fichier.
 - Vous pouvez importer `./takeoutfix-extracted/Takeout` dans votre nouveau stockage.
 
 ## Problèmes fréquents

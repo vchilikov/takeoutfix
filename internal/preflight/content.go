@@ -1,43 +1,74 @@
 package preflight
 
 import (
-	"errors"
-	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/vchilikov/takeout-fix/internal/mediaext"
+	"github.com/vchilikov/takeout-fix/utils/files"
 )
 
 var (
-	walkDirForContent = filepath.WalkDir
-	errFoundMedia     = errors.New("processable media found")
+	scanTakeoutContent = files.ScanTakeout
+	statPathForContent = os.Stat
 )
 
-// HasProcessableTakeout returns true when a folder looks like extracted
-// Takeout content by finding at least one media evidence item.
-func HasProcessableTakeout(path string) (bool, error) {
-	err := walkDirForContent(path, func(_ string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
+const takeoutDirName = "Takeout"
 
-		ext := filepath.Ext(d.Name())
-		for _, supportedExt := range mediaext.Supported {
-			if strings.EqualFold(ext, supportedExt) {
-				return errFoundMedia
-			}
+// DetectProcessableTakeoutRoot returns a strict extracted-Takeout root when one
+// can be identified and contains at least one media/json pair.
+func DetectProcessableTakeoutRoot(path string) (string, bool, error) {
+	candidates, err := takeoutRootCandidates(path)
+	if err != nil {
+		return "", false, err
+	}
+
+	for _, candidate := range candidates {
+		scan, scanErr := scanTakeoutContent(candidate)
+		if scanErr != nil {
+			return "", false, scanErr
 		}
-		return nil
-	})
-	if err == nil {
-		return false, nil
+		if len(scan.Pairs) > 0 {
+			return candidate, true, nil
+		}
 	}
-	if errors.Is(err, errFoundMedia) {
-		return true, nil
+	return "", false, nil
+}
+
+// HasProcessableTakeout reports whether DetectProcessableTakeoutRoot finds a
+// strict extracted-Takeout root.
+func HasProcessableTakeout(path string) (bool, error) {
+	_, ok, err := DetectProcessableTakeoutRoot(path)
+	return ok, err
+}
+
+func takeoutRootCandidates(path string) ([]string, error) {
+	candidates := make([]string, 0, 2)
+	seen := make(map[string]struct{}, 2)
+	addCandidate := func(root string) {
+		clean := filepath.Clean(root)
+		if _, ok := seen[clean]; ok {
+			return
+		}
+		seen[clean] = struct{}{}
+		candidates = append(candidates, clean)
 	}
-	return false, err
+
+	if strings.EqualFold(filepath.Base(path), takeoutDirName) {
+		addCandidate(path)
+	}
+
+	nestedTakeout := filepath.Join(path, takeoutDirName)
+	info, err := statPathForContent(nestedTakeout)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return candidates, nil
+		}
+		return nil, err
+	}
+	if info.IsDir() {
+		addCandidate(nestedTakeout)
+	}
+
+	return candidates, nil
 }

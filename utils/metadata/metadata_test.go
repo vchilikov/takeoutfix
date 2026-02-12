@@ -583,14 +583,14 @@ func TestDetectGPSInclusion_GeoDataZeroExifValid(t *testing.T) {
 	}
 }
 
-func TestDetectGPSInclusion_GeoDataValidExifZero(t *testing.T) {
-	jsonPath := writeJSONFixture(t, `{"geoData":{"latitude":55.7,"longitude":37.5},"geoDataExif":{"latitude":0.0,"longitude":0.0}}`)
+func TestDetectGPSInclusion_BothValid(t *testing.T) {
+	jsonPath := writeJSONFixture(t, `{"geoData":{"latitude":55.7,"longitude":37.5},"geoDataExif":{"latitude":48.8,"longitude":2.3}}`)
 	gps := detectGPSInclusion(jsonPath)
 	if !gps.geoData {
 		t.Fatalf("expected geoData=true for valid coords")
 	}
-	if gps.geoDataExif {
-		t.Fatalf("expected geoDataExif=false for zero coords")
+	if !gps.geoDataExif {
+		t.Fatalf("expected geoDataExif=true for valid coords")
 	}
 }
 

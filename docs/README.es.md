@@ -62,7 +62,7 @@ Después de una ejecución correcta:
 - Tus archivos procesados estarán en `./takeoutfix-extracted/Takeout`.
 - Se aplicarán metadatos a fotos y videos compatibles.
 - Los `Tags` del JSON se escribirán en `Keywords` y `Subject`.
-- Si el timestamp de captura en JSON falta o es inválido, y el nombre del archivo empieza con `YYYY-MM-DD HH.MM.SS`, la fecha se restaurará desde el nombre.
+- Si el timestamp de captura en JSON falta o es inválido y el nombre del archivo empieza con `YYYY-MM-DD HH.MM.SS`, la fecha se restaurará desde el nombre.
 - Puedes subir `./takeoutfix-extracted/Takeout` a tu nuevo almacenamiento.
 
 ## Problemas comunes
