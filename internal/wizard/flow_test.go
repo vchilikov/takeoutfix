@@ -3,6 +3,7 @@ package wizard
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -1010,6 +1011,35 @@ func TestRunWritesDetailedJSONReport(t *testing.T) {
 	}
 	if _, ok := parsed["metadata"].(map[string]any); !ok {
 		t.Fatalf("expected metadata object in json report, got %T", parsed["metadata"])
+	}
+}
+
+func TestRunDoesNotPrintDetailedPathWhenReportWriteFails(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency {
+		return []preflight.Dependency{{Name: "exiftool"}}
+	}
+	writeReportJSON = func(Report) (string, error) {
+		return "/tmp/report-failed.json", errors.New("write report json: disk full")
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), &out)
+	if code != ExitPreflightFail {
+		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
+	}
+
+	text := out.String()
+	if !strings.Contains(text, "Detailed report: unavailable") {
+		t.Fatalf("expected unavailable detailed report, got:\n%s", text)
+	}
+	if strings.Contains(text, "Detailed report: /tmp/report-failed.json") {
+		t.Fatalf("did not expect detailed report path on write failure, got:\n%s", text)
+	}
+	if !strings.Contains(text, "Report save warning: write report json: disk full (path: /tmp/report-failed.json)") {
+		t.Fatalf("expected warning with failed report path, got:\n%s", text)
 	}
 }
 
