@@ -1013,6 +1013,64 @@ func TestRunWritesDetailedJSONReport(t *testing.T) {
 	}
 }
 
+func TestRunReportWriteFailureHidesDetailedReportPath(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) {
+		return []preflight.ZipArchive{{Name: "a.zip", Path: "/tmp/a.zip", Fingerprint: "f1"}}, nil
+	}
+	validateAll = func(zips []preflight.ZipArchive) preflight.IntegritySummary {
+		return preflight.IntegritySummary{
+			Checked:           []preflight.ArchiveIntegrity{{Archive: zips[0], FileCount: 1, UncompressedBytes: 100}},
+			TotalUncompressed: 100,
+			TotalZipBytes:     20,
+		}
+	}
+	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		return preflight.SpaceCheck{
+			AvailableBytes:          300,
+			RequiredBytes:           120,
+			RequiredWithDeleteBytes: 80,
+			Enough:                  true,
+			EnoughWithDelete:        true,
+		}, nil
+	}
+	loadState = func(string) (state.RunState, error) { return state.New(), nil }
+	saveState = func(string, state.RunState) error { return nil }
+	removeFile = func(string) error { return nil }
+	extractArchiveFile = func(string, string) (int, error) { return 1, nil }
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		return processor.Report{}, nil
+	}
+
+	fakePath := "/tmp/fake/report-20000101-000000.json"
+	writeReportJSON = func(Report) (string, error) {
+		return fakePath, io.EOF
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success, got %d\n%s", code, out.String())
+	}
+
+	text := out.String()
+	if !strings.Contains(text, "Detailed report: unavailable") {
+		t.Fatalf("expected unavailable detailed report path, got:\n%s", text)
+	}
+	if strings.Contains(text, "Detailed report: "+fakePath) {
+		t.Fatalf("did not expect failed report path in detailed report line, got:\n%s", text)
+	}
+	if !strings.Contains(text, "Report save warning:") {
+		t.Fatalf("expected report warning line, got:\n%s", text)
+	}
+	if !strings.Contains(text, "target path: "+fakePath) {
+		t.Fatalf("expected target path in warning, got:\n%s", text)
+	}
+}
+
 func detailedReportPathFromOutput(output string) string {
 	const prefix = "Detailed report: "
 	for _, line := range strings.Split(output, "\n") {

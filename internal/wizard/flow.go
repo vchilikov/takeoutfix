@@ -57,11 +57,16 @@ func Run(cwd string, out io.Writer) int {
 		report.TotalDuration = finishedAt.Sub(runStartedAt)
 		report.normalizeProblems()
 
-		reportPath, err := writeReportJSON(report.Workdir, report)
-		report.DetailedReportPath = reportPath
+		reportPath, err := writeReportJSON(report)
 		if err != nil {
-			report.DetailedReportWriteError = err.Error()
-			report.addProblem("report write errors", 1, err.Error())
+			errText := err.Error()
+			if reportPath != "" {
+				errText = fmt.Sprintf("%s (target path: %s)", errText, reportPath)
+			}
+			report.DetailedReportWriteError = errText
+			report.addProblem("report write errors", 1, errText)
+		} else {
+			report.DetailedReportPath = reportPath
 		}
 
 		printReport(out, report)
