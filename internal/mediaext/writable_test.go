@@ -1,12 +1,14 @@
 package mediaext
 
 import (
+	"errors"
 	"strings"
-	"sync"
 	"testing"
 )
 
 func TestParseWritableExtensionSet(t *testing.T) {
+	t.Parallel()
+
 	output := "Writable file types:\n  3GP AVI HEIC JPG MP4 MOV WEBP\n"
 	got := parseWritableExtensionSet(output)
 
@@ -20,28 +22,16 @@ func TestParseWritableExtensionSet(t *testing.T) {
 	}
 }
 
-func TestIsWritableExtension_UsesCachedList(t *testing.T) {
-	origRun := runListWritableTypes
-	origSet := writableExtSet
-	origErr := writableExtLoadErr
-	defer func() {
-		runListWritableTypes = origRun
-		writableOnce = sync.Once{}
-		writableExtSet = origSet
-		writableExtLoadErr = origErr
-	}()
-
-	writableOnce = sync.Once{}
-	writableExtSet = nil
-	writableExtLoadErr = nil
+func TestWritableResolver_UsesCachedList(t *testing.T) {
+	t.Parallel()
 
 	calls := 0
-	runListWritableTypes = func() (string, error) {
+	resolver := newWritableResolver(func() (string, error) {
 		calls++
 		return "Writable file types:\n  JPG MP4 HEIC\n", nil
-	}
+	})
 
-	ok, err := IsWritableExtension(".jpg")
+	ok, err := resolver.IsWritableExtension(".jpg")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +39,7 @@ func TestIsWritableExtension_UsesCachedList(t *testing.T) {
 		t.Fatalf("expected .jpg to be writable")
 	}
 
-	ok, err = IsWritableExtension("AVI")
+	ok, err = resolver.IsWritableExtension("AVI")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -62,7 +52,22 @@ func TestIsWritableExtension_UsesCachedList(t *testing.T) {
 	}
 }
 
+func TestWritableResolver_LoadError(t *testing.T) {
+	t.Parallel()
+
+	resolver := newWritableResolver(func() (string, error) {
+		return "", errors.New("boom")
+	})
+
+	_, err := resolver.IsWritableExtension(".jpg")
+	if err == nil {
+		t.Fatalf("expected error from loader")
+	}
+}
+
 func TestIsWritableToken(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		token string
 		want  bool
@@ -79,5 +84,19 @@ func TestIsWritableToken(t *testing.T) {
 		if got := isWritableToken(tt.token); got != tt.want {
 			t.Fatalf("isWritableToken(%q) = %v, want %v", tt.token, got, tt.want)
 		}
+	}
+}
+
+func TestNormalizeExtension(t *testing.T) {
+	t.Parallel()
+
+	if got := normalizeExtension(""); got != "" {
+		t.Fatalf("normalize empty extension: got %q", got)
+	}
+	if got := normalizeExtension(" JPG "); got != ".jpg" {
+		t.Fatalf("normalize JPG: got %q", got)
+	}
+	if got := normalizeExtension(".HeIc"); got != ".heic" {
+		t.Fatalf("normalize .HeIc: got %q", got)
 	}
 }

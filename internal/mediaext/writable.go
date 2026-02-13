@@ -9,12 +9,6 @@ import (
 	"github.com/vchilikov/takeout-fix/internal/exifcmd"
 )
 
-var (
-	writableOnce       sync.Once
-	writableExtSet     map[string]struct{}
-	writableExtLoadErr error
-)
-
 var runListWritableTypes = func() (string, error) {
 	bin, err := exifcmd.Resolve()
 	if err != nil {
@@ -29,31 +23,54 @@ var runListWritableTypes = func() (string, error) {
 	return string(out), nil
 }
 
+type writableResolver struct {
+	loadOnce func() (map[string]struct{}, error)
+}
+
+func newWritableResolver(loader func() (string, error)) *writableResolver {
+	return &writableResolver{
+		loadOnce: sync.OnceValues(func() (map[string]struct{}, error) {
+			output, err := loader()
+			if err != nil {
+				return nil, err
+			}
+			return parseWritableExtensionSet(output), nil
+		}),
+	}
+}
+
+var defaultWritableResolver = newWritableResolver(runListWritableTypes)
+
 // IsWritableExtension reports whether exiftool can write metadata into files
 // with the provided extension (for example ".jpg" or ".avi").
 func IsWritableExtension(ext string) (bool, error) {
-	normalized := strings.ToLower(strings.TrimSpace(ext))
+	return defaultWritableResolver.IsWritableExtension(ext)
+}
+
+func (r *writableResolver) IsWritableExtension(ext string) (bool, error) {
+	normalized := normalizeExtension(ext)
 	if normalized == "" {
 		return false, nil
+	}
+
+	extSet, err := r.loadOnce()
+	if err != nil {
+		return false, err
+	}
+
+	_, ok := extSet[normalized]
+	return ok, nil
+}
+
+func normalizeExtension(ext string) string {
+	normalized := strings.ToLower(strings.TrimSpace(ext))
+	if normalized == "" {
+		return ""
 	}
 	if !strings.HasPrefix(normalized, ".") {
 		normalized = "." + normalized
 	}
-
-	writableOnce.Do(func() {
-		output, err := runListWritableTypes()
-		if err != nil {
-			writableExtLoadErr = err
-			return
-		}
-		writableExtSet = parseWritableExtensionSet(output)
-	})
-	if writableExtLoadErr != nil {
-		return false, writableExtLoadErr
-	}
-
-	_, ok := writableExtSet[normalized]
-	return ok, nil
+	return normalized
 }
 
 func parseWritableExtensionSet(output string) map[string]struct{} {

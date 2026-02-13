@@ -352,14 +352,14 @@ func applyMediaFileDatesFromJSON(
 	includeCreateDate bool,
 	run func(args []string) (string, error),
 ) (bool, error) {
-	args := buildMediaFileDateArgsFromJSON(jsonPath, mediaPath, includeCreateDate)
+	args := buildMediaFileDateArgsFromJSON(mediaPath, jsonPath, includeCreateDate)
 	output, err := run(args)
 	if err == nil {
 		return false, nil
 	}
 
 	if includeCreateDate && strings.Contains(strings.ToLower(output), "filecreatedate") {
-		retryArgs := buildMediaFileDateArgsFromJSON(jsonPath, mediaPath, false)
+		retryArgs := buildMediaFileDateArgsFromJSON(mediaPath, jsonPath, false)
 		retryOutput, retryErr := run(retryArgs)
 		if retryErr == nil {
 			return true, nil
@@ -370,7 +370,7 @@ func applyMediaFileDatesFromJSON(
 	return false, fmt.Errorf("could not apply media file dates for %s\nerror: %w\noutput: %s", mediaPath, err, output)
 }
 
-func buildMediaFileDateArgsFromJSON(jsonPath string, mediaPath string, includeCreateDate bool) []string {
+func buildMediaFileDateArgsFromJSON(mediaPath string, jsonPath string, includeCreateDate bool) []string {
 	args := []string{
 		"-d", "%s",
 		"-m",

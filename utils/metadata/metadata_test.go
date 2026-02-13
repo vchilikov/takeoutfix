@@ -631,6 +631,80 @@ func TestApplyFilenameDate_FileCreateDateRetryKeepsMinorWarningMode(t *testing.T
 	}
 }
 
+func TestApplyMediaFileDatesFromJSON_FileCreateDateRetry(t *testing.T) {
+	calls := 0
+	runner := func(args []string) (string, error) {
+		calls++
+		switch calls {
+		case 1:
+			if !slices.Contains(args, "-FileCreateDate<PhotoTakenTimeTimestamp") {
+				t.Fatalf("expected FileCreateDate mapping in first call, args: %v", args)
+			}
+			if !slices.Contains(args, "clip.avi") {
+				t.Fatalf("expected media target clip.avi, args: %v", args)
+			}
+			if !slices.Contains(args, "meta.json") {
+				t.Fatalf("expected JSON source meta.json, args: %v", args)
+			}
+			return "Warning: Sorry, FileCreateDate is not supported\n", fmt.Errorf("exiftool failed")
+		case 2:
+			for _, arg := range args {
+				if strings.HasPrefix(arg, "-FileCreateDate<") {
+					t.Fatalf("did not expect FileCreateDate mapping in retry call, args: %v", args)
+				}
+			}
+			if !slices.Contains(args, "clip.avi") {
+				t.Fatalf("expected media target clip.avi in retry, args: %v", args)
+			}
+			return "1 image files updated\n", nil
+		default:
+			return "", fmt.Errorf("unexpected call %d", calls)
+		}
+	}
+
+	createDateWarned, err := applyMediaFileDatesFromJSON("clip.avi", "meta.json", true, runner)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !createDateWarned {
+		t.Fatalf("expected createDateWarned=true")
+	}
+	if calls != 2 {
+		t.Fatalf("expected two calls, got %d", calls)
+	}
+}
+
+func TestApplyMediaFileDatesFromFilename_Success(t *testing.T) {
+	calls := 0
+	runner := func(args []string) (string, error) {
+		calls++
+		if !slices.Contains(args, "-FileModifyDate=2013:06:11 16:19:16") {
+			t.Fatalf("expected FileModifyDate assignment, args: %v", args)
+		}
+		if !slices.Contains(args, "-FileCreateDate=2013:06:11 16:19:16") {
+			t.Fatalf("expected FileCreateDate assignment, args: %v", args)
+		}
+		if !slices.Contains(args, "2013-06-11 16.19.16.avi") {
+			t.Fatalf("expected media target path, args: %v", args)
+		}
+		return "1 image files updated\n", nil
+	}
+
+	used, warned, err := applyMediaFileDatesFromFilename("2013-06-11 16.19.16.avi", true, runner)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !used {
+		t.Fatalf("expected used=true")
+	}
+	if warned {
+		t.Fatalf("expected warned=false")
+	}
+	if calls != 1 {
+		t.Fatalf("expected one call, got %d", calls)
+	}
+}
+
 func TestParseFilenameDate_AssumesUTC(t *testing.T) {
 	parsed, ok := parseFilenameDate("2013-06-11 16.19.16.jpg")
 	if !ok {
