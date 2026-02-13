@@ -63,18 +63,18 @@ Windows (PowerShell):
 - 支持的照片和视频会写入元数据。
 - JSON 中的 `Tags` 会写入 `Keywords` 和 `Subject`。
 - 如果 JSON 中的拍摄时间戳缺失或无效，且文件名以 `YYYY-MM-DD HH.MM.SS` 开头，会从文件名恢复日期。
+- 每次运行的详细报告会保存到 `./.takeoutfix/reports/report-YYYYMMDD-HHMMSS.json`。
 - 你可以将 `./takeoutfix-extracted/Takeout` 上传到新的云存储。
 
 ## 常见问题
 
-- `No ZIP archives found in current folder.`
-  - TakeoutFix 会自动检测工作目录中是否已存在解压后的 Takeout 内容。
-  - 如果仍然出现该提示，请将所有 Takeout ZIP 分卷放到工作目录顶层，或在已包含解压后 Takeout 内容的目录中运行工具。
-- `Corrupt ZIP files found. Processing stopped.`
+- `No ZIP files or extracted Takeout data found in this folder.`
+  - 请将所有 Takeout ZIP 分卷放到工作目录顶层，或在已包含解压后 Takeout 内容的目录中运行工具。
+- `Some ZIP files are corrupted. Please re-download them and run again.`
   - 请在 Google Takeout 重新下载损坏的分卷后重试。
-- `Missing dependencies: exiftool`
+- `Step 1/3: Checking dependencies... missing`
   - 请先使用上方推荐的一键命令，或手动安装 `exiftool` 后再运行。
-- `Not enough disk space even with auto-delete enabled.`
+- `Not enough free disk space to continue.`
   - 请释放更多磁盘空间后重试。
 - macOS 提示应用未验证
   - 去除隔离属性后再运行：

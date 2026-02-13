@@ -90,7 +90,7 @@ ensure_exiftool() {
 		return
 	fi
 
-	log "exiftool not found in PATH. Installing..."
+	log "ExifTool is required. Installing it now..."
 	case "$OS" in
 		darwin)
 			install_exiftool_macos
@@ -158,7 +158,7 @@ download_assets() {
 	ASSET_PATH="${TMP_DIR}/${ASSET_NAME}"
 	CHECKSUM_PATH="${TMP_DIR}/${checksums_name}"
 
-	log "Downloading ${ASSET_NAME}..."
+	log "Downloading TakeoutFix (${ASSET_NAME})..."
 	curl -fsSL -o "$ASSET_PATH" "${base_url}/${ASSET_NAME}" || fail "failed to download ${ASSET_NAME}"
 	curl -fsSL -o "$CHECKSUM_PATH" "${base_url}/${checksums_name}" || fail "failed to download ${checksums_name}"
 }
@@ -246,7 +246,7 @@ extract_binary() {
 }
 
 run_takeoutfix() {
-	log "Running TakeoutFix in: ${CWD}"
+	log "Starting TakeoutFix in: ${CWD}"
 	set +e
 	"$RUN_BIN" --workdir "$CWD"
 	status=$?

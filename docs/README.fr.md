@@ -63,18 +63,18 @@ Après une exécution réussie :
 - Les métadonnées sont appliquées aux photos et vidéos prises en charge.
 - Les `Tags` JSON sont écrits dans `Keywords` et `Subject`.
 - Si l'horodatage de prise de vue dans le JSON est absent ou invalide et que le nom de fichier commence par `YYYY-MM-DD HH.MM.SS`, la date est restaurée depuis le nom de fichier.
+- Un rapport d'exécution détaillé est enregistré dans `./.takeoutfix/reports/report-YYYYMMDD-HHMMSS.json`.
 - Vous pouvez importer `./takeoutfix-extracted/Takeout` dans votre nouveau stockage.
 
 ## Problèmes fréquents
 
-- `No ZIP archives found in current folder.`
-  - TakeoutFix détecte automatiquement le contenu Takeout déjà extrait dans le dossier de travail.
-  - Si le message persiste, placez toutes les parties ZIP Takeout à la racine du dossier de travail, ou lancez l'outil depuis un dossier contenant déjà le contenu Takeout extrait.
-- `Corrupt ZIP files found. Processing stopped.`
+- `No ZIP files or extracted Takeout data found in this folder.`
+  - Placez toutes les parties ZIP Takeout à la racine du dossier de travail, ou lancez l'outil depuis un dossier contenant déjà le contenu Takeout extrait.
+- `Some ZIP files are corrupted. Please re-download them and run again.`
   - Retéléchargez les parties corrompues depuis Google Takeout puis relancez.
-- `Missing dependencies: exiftool`
+- `Step 1/3: Checking dependencies... missing`
   - Utilisez la commande one-liner recommandée ci-dessus, ou installez `exiftool` manuellement.
-- `Not enough disk space even with auto-delete enabled.`
+- `Not enough free disk space to continue.`
   - Libérez de l'espace disque puis relancez.
 - macOS indique que l'application n'est pas vérifiée
   - Retirez la quarantaine puis relancez :

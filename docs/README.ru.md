@@ -63,18 +63,18 @@ Windows (PowerShell):
 - Метаданные применятся к поддерживаемым фото и видео.
 - `Tags` из JSON будут записаны в `Keywords` и `Subject`.
 - Если время съемки в JSON отсутствует или невалидно и имя файла начинается с `YYYY-MM-DD HH.MM.SS`, дата будет восстановлена из имени файла.
+- Подробный отчет запуска сохраняется в `./.takeoutfix/reports/report-YYYYMMDD-HHMMSS.json`.
 - Папку `./takeoutfix-extracted/Takeout` можно загружать в новое облако.
 
 ## Частые проблемы
 
-- `No ZIP archives found in current folder.`
-  - TakeoutFix автоматически проверяет, есть ли уже распакованный контент Takeout в рабочей папке.
-  - Если сообщение осталось, положите ZIP-части Takeout в корень папки или запустите утилиту в папке с распакованным контентом.
-- `Corrupt ZIP files found. Processing stopped.`
+- `No ZIP files or extracted Takeout data found in this folder.`
+  - Положите ZIP-части Takeout в корень папки или запускайте утилиту в папке с уже распакованным контентом.
+- `Some ZIP files are corrupted. Please re-download them and run again.`
   - Скачайте поврежденные части архива заново в Google Takeout и повторите запуск.
-- `Missing dependencies: exiftool`
+- `Step 1/3: Checking dependencies... missing`
   - Используйте рекомендованную one-liner команду выше или установите `exiftool` вручную.
-- `Not enough disk space even with auto-delete enabled.`
+- `Not enough free disk space to continue.`
   - Освободите место на диске и запустите повторно.
 - macOS сообщает, что приложение не проверено
   - Снимите карантин и запустите снова:

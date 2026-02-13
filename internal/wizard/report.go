@@ -2,14 +2,19 @@ package wizard
 
 import (
 	"io"
-	"sort"
 	"time"
 
 	"github.com/vchilikov/takeout-fix/internal/preflight"
 )
 
 type Report struct {
-	Status string
+	Status                   string
+	ExitCode                 int
+	Workdir                  string
+	StartedAtLocal           time.Time
+	FinishedAtLocal          time.Time
+	DetailedReportPath       string
+	DetailedReportWriteError string
 
 	ArchiveFound   int
 	ArchiveValid   int
@@ -70,53 +75,45 @@ func (r *Report) addProblem(category string, n int, sample ...string) {
 	r.ProblemSample[category] = append(current, sample[:limit]...)
 }
 
-func printReport(out io.Writer, report Report) {
-	writeLine(out, "")
-	writeLine(out, "Final summary")
-	writef(out, "Status: %s\n", report.Status)
-	writef(out, "Archives: found=%d, valid=%d, corrupt=%d\n", report.ArchiveFound, report.ArchiveValid, report.ArchiveCorrupt)
-	writef(out, "Disk: available=%s, required=%s, auto-delete=%t\n", preflight.FormatBytes(report.Disk.AvailableBytes), preflight.FormatBytes(report.Disk.RequiredBytes), report.AutoDelete)
-	writef(out, "Extraction: extracted archives=%d, skipped=%d, extracted files=%d, deleted zips=%d\n", report.ExtractedArchives, report.SkippedArchives, report.ExtractedFiles, report.DeletedZips)
-	writef(out, "Metadata: media=%d, applied=%d, filename-date=%d, renamed=%d, xmp=%d, missing json=%d, ambiguous=%d\n", report.MediaFound, report.MetadataApplied, report.FilenameDateApplied, report.RenamedExtensions, report.XMPSidecars, report.MissingJSON, report.AmbiguousMedia)
-	writef(out, "JSON cleanup: removed=%d, kept due to errors=%d, kept unused=%d\n", report.JSONRemoved, report.JSONKeptDueToErrors, report.UnusedJSON)
-	writef(
-		out,
-		"Timing: zip scan=%s, zip validate=%s, disk check=%s, extract=%s, process=%s, total=%s\n",
-		formatDuration(report.ZipScanDuration),
-		formatDuration(report.ZipValidateDuration),
-		formatDuration(report.DiskCheckDuration),
-		formatDuration(report.ExtractDuration),
-		formatDuration(report.ProcessDuration),
-		formatDuration(report.TotalDuration),
-	)
-
-	if len(report.CorruptNames) > 0 {
-		report.addProblem("corrupt zips", len(report.CorruptNames), report.CorruptNames...)
+func (r *Report) normalizeProblems() {
+	if len(r.CorruptNames) > 0 && r.ProblemCounts["corrupt zips"] == 0 {
+		r.addProblem("corrupt zips", len(r.CorruptNames), r.CorruptNames...)
 	}
-	if len(report.DeleteErrors) > 0 {
-		report.addProblem("zip delete errors", len(report.DeleteErrors), report.DeleteErrors...)
-	}
-	if len(report.ProblemCounts) > 0 {
-		writeLine(out, "Problems:")
-		categories := make([]string, 0, len(report.ProblemCounts))
-		for category := range report.ProblemCounts {
-			categories = append(categories, category)
-		}
-		sort.Strings(categories)
-		for _, category := range categories {
-			writef(out, "- %s (%d)\n", category, report.ProblemCounts[category])
-			if samples := report.ProblemSample[category]; len(samples) > 0 {
-				for _, sample := range samples {
-					writef(out, "  - %s\n", sample)
-				}
-			}
-		}
+	if len(r.DeleteErrors) > 0 && r.ProblemCounts["zip delete errors"] == 0 {
+		r.addProblem("zip delete errors", len(r.DeleteErrors), r.DeleteErrors...)
 	}
 }
 
-func formatDuration(d time.Duration) string {
-	if d <= 0 {
-		return "0s"
+func printReport(out io.Writer, report Report) {
+	writeLine(out, "")
+	writef(out, "Run result: %s\n", runResultLabel(report.Status))
+	writef(out, "Metadata updated: %d of %d files\n", report.MetadataApplied, report.MediaFound)
+	writef(out, "Date restored from filename: %d\n", report.FilenameDateApplied)
+	writef(out, "JSON removed: %d\n", report.JSONRemoved)
+	writef(out, "Missing metadata JSON: %d\n", report.MissingJSON)
+
+	if report.Status != "SUCCESS" {
+		writeLine(out, "Some files need attention. See the detailed report.")
 	}
-	return d.Round(time.Millisecond).String()
+
+	if report.DetailedReportPath != "" {
+		writef(out, "Detailed report: %s\n", report.DetailedReportPath)
+	} else {
+		writeLine(out, "Detailed report: unavailable")
+	}
+
+	if report.DetailedReportWriteError != "" {
+		writef(out, "Report save warning: %s\n", report.DetailedReportWriteError)
+	}
+}
+
+func runResultLabel(status string) string {
+	switch status {
+	case "SUCCESS":
+		return "Completed"
+	case "PARTIAL_SUCCESS":
+		return "Completed with issues"
+	default:
+		return "Failed"
+	}
 }

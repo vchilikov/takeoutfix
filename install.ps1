@@ -26,7 +26,7 @@ function Ensure-Exiftool {
         return
     }
 
-    Write-Step "exiftool not found in PATH. Installing via winget..."
+    Write-Step "ExifTool is required. Installing it now via winget..."
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         throw "exiftool is missing and winget is not available. Install exiftool manually and rerun."
     }
@@ -101,7 +101,7 @@ try {
     $archivePath = Join-Path $TmpDir $assetName
     $checksumsPath = Join-Path $TmpDir $checksumsName
 
-    Write-Step "Downloading $assetName..."
+    Write-Step "Downloading TakeoutFix ($assetName)..."
     Invoke-WebRequest -Uri "$baseUrl/$assetName" -OutFile $archivePath
     Invoke-WebRequest -Uri "$baseUrl/$checksumsName" -OutFile $checksumsPath
 
@@ -125,7 +125,7 @@ try {
     $RunExe = Join-Path $Cwd (".takeoutfix-run-$PID-{0}.exe" -f [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
     Copy-Item -LiteralPath $sourceExe -Destination $RunExe -Force
 
-    Write-Step "Running TakeoutFix in: $Cwd"
+    Write-Step "Starting TakeoutFix in: $Cwd"
     & $RunExe --workdir $Cwd
     $ExitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
 }

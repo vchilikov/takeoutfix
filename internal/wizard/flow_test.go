@@ -2,9 +2,11 @@ package wizard
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -66,7 +68,7 @@ func TestRunFailsWhenDependenciesAreMissing(t *testing.T) {
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Missing dependencies: exiftool")) {
+	if !bytes.Contains(out.Bytes(), []byte("Please install: exiftool")) {
 		t.Fatalf("expected missing dependency message, got:\n%s", out.String())
 	}
 	if !bytes.Contains(out.Bytes(), []byte(installerURLMacLinux)) {
@@ -165,7 +167,7 @@ func TestRunAlwaysUsesEnglishWithoutLanguagePrompt(t *testing.T) {
 	}
 
 	text := out.String()
-	if !bytes.Contains(out.Bytes(), []byte("TakeoutFix interactive mode")) {
+	if !bytes.Contains(out.Bytes(), []byte("TakeoutFix")) {
 		t.Fatalf("expected english title in output, got: %s", text)
 	}
 	if bytes.Contains(out.Bytes(), []byte("Language:")) || bytes.Contains(out.Bytes(), []byte("Язык:")) {
@@ -210,20 +212,14 @@ func TestRunContinuesWhenOnlyAutoDeleteFits(t *testing.T) {
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("required with auto-delete")) {
-		t.Fatalf("expected auto-delete disk line, got:\n%s", out.String())
-	}
-	if !bytes.Contains(out.Bytes(), []byte("Low-space mode enabled")) {
+	if !bytes.Contains(out.Bytes(), []byte("Low-space mode: ZIP files will be deleted right after extraction.")) {
 		t.Fatalf("expected low-space mode warning, got:\n%s", out.String())
 	}
 	if bytes.Contains(out.Bytes(), []byte("Enable delete-mode")) {
 		t.Fatalf("did not expect interactive delete-mode prompt, got:\n%s", out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("auto-delete=true")) {
-		t.Fatalf("expected final summary to report auto-delete=true, got:\n%s", out.String())
-	}
-	if !bytes.Contains(out.Bytes(), []byte("deleted zips=1")) {
-		t.Fatalf("expected extracted archive to be auto-deleted, got:\n%s", out.String())
+	if !bytes.Contains(out.Bytes(), []byte("Run result: Completed")) {
+		t.Fatalf("expected success summary, got:\n%s", out.String())
 	}
 }
 
@@ -257,7 +253,7 @@ func TestRunFailsWhenAutoDeleteIsInsufficient(t *testing.T) {
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Not enough disk space even with auto-delete enabled.")) {
+	if !bytes.Contains(out.Bytes(), []byte("Not enough free disk space to continue.")) {
 		t.Fatalf("expected explicit auto-delete failure message, got:\n%s", out.String())
 	}
 }
@@ -276,7 +272,7 @@ func TestRunAutoLanguageEnglishWithoutPrompt(t *testing.T) {
 	}
 
 	text := out.String()
-	if !bytes.Contains(out.Bytes(), []byte("TakeoutFix interactive mode")) {
+	if !bytes.Contains(out.Bytes(), []byte("TakeoutFix")) {
 		t.Fatalf("expected english title in output, got: %s", text)
 	}
 	if bytes.Contains(out.Bytes(), []byte("Language:")) || bytes.Contains(out.Bytes(), []byte("Язык:")) {
@@ -331,11 +327,8 @@ func TestRunShowsExtractionProgressForSkippedAndExtracted(t *testing.T) {
 	}
 
 	output := out.Bytes()
-	if !bytes.Contains(output, []byte("Extraction progress: 1/2 (50%) skipped: a.zip")) {
-		t.Fatalf("expected skipped extraction progress line, got:\n%s", out.String())
-	}
-	if !bytes.Contains(output, []byte("Extraction progress: 2/2 (100%) extracted: b.zip")) {
-		t.Fatalf("expected extracted progress line, got:\n%s", out.String())
+	if !bytes.Contains(output, []byte("Preparing files from ZIP archives... done")) {
+		t.Fatalf("expected archive preparation completion line, got:\n%s", out.String())
 	}
 
 	if len(diskCheckArchives) != 1 {
@@ -382,16 +375,13 @@ func TestRunShowsThrottledProcessingProgress(t *testing.T) {
 	}
 
 	output := out.Bytes()
-	if !bytes.Contains(output, []byte("Processing progress: 1/500 (0%) media: A.jpg")) {
-		t.Fatalf("expected first progress line, got:\n%s", out.String())
+	if !bytes.Contains(output, []byte("Progress: 0%")) {
+		t.Fatalf("expected initial progress line, got:\n%s", out.String())
 	}
-	if bytes.Contains(output, []byte("Processing progress: 2/500 (0%) media: B.jpg")) {
-		t.Fatalf("unexpected duplicate same-percent progress line, got:\n%s", out.String())
+	if bytes.Contains(output, []byte("A.jpg")) || bytes.Contains(output, []byte("B.jpg")) || bytes.Contains(output, []byte("C.jpg")) {
+		t.Fatalf("did not expect per-file progress output, got:\n%s", out.String())
 	}
-	if !bytes.Contains(output, []byte("Processing progress: 5/500 (1%) media: C.jpg")) {
-		t.Fatalf("expected percent change progress line, got:\n%s", out.String())
-	}
-	if !bytes.Contains(output, []byte("Processing progress: 500/500 (100%) media: Z.jpg")) {
+	if !bytes.Contains(output, []byte("Progress: 100%")) {
 		t.Fatalf("expected final progress line, got:\n%s", out.String())
 	}
 }
@@ -426,7 +416,7 @@ func TestRunShowsEmptyProcessingProgress(t *testing.T) {
 	if code != ExitSuccess {
 		t.Fatalf("expected success, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Processing progress: 0/0 (0%)")) {
+	if !bytes.Contains(out.Bytes(), []byte("Progress: 0%")) {
 		t.Fatalf("expected empty processing progress line, got:\n%s", out.String())
 	}
 }
@@ -510,7 +500,7 @@ func TestRunReprocessesWhenNoZipsButExtractedDirExists(t *testing.T) {
 	if !processCalled {
 		t.Fatalf("expected processTakeout to be called")
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Re-processing previously extracted data...")) {
+	if !bytes.Contains(out.Bytes(), []byte("Using previously extracted Takeout data from:")) {
 		t.Fatalf("expected re-processing message, got:\n%s", out.String())
 	}
 }
@@ -533,7 +523,7 @@ func TestRunFailsWhenNoZipsAndNoExtractedDir(t *testing.T) {
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("No ZIP archives found and no extracted data.")) {
+	if !bytes.Contains(out.Bytes(), []byte("No ZIP files or extracted Takeout data found in this folder.")) {
 		t.Fatalf("expected no-data message, got:\n%s", out.String())
 	}
 }
@@ -588,7 +578,7 @@ func TestRunProcessesDetectedTakeoutRootWhenNoZips(t *testing.T) {
 	if processedDir != detectedRoot {
 		t.Fatalf("expected process dir to be detected root, got %q", processedDir)
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Processing existing Takeout content from: "+detectedRoot)) {
+	if !bytes.Contains(out.Bytes(), []byte("Using existing Takeout content from: "+detectedRoot)) {
 		t.Fatalf("expected processing-existing-content message, got:\n%s", out.String())
 	}
 }
@@ -615,7 +605,7 @@ func TestRunFailsWhenExtractedPathIsFile(t *testing.T) {
 	if code != ExitPreflightFail {
 		t.Fatalf("expected preflight fail, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("not a directory")) {
+	if !bytes.Contains(out.Bytes(), []byte("but it is not a folder")) {
 		t.Fatalf("expected not-a-directory message, got:\n%s", out.String())
 	}
 }
@@ -676,14 +666,11 @@ func TestRunSkipsDiskCheckWhenAllArchivesExtracted(t *testing.T) {
 	if diskCheckCalled {
 		t.Fatalf("expected disk check to be skipped when all archives are already extracted")
 	}
-	if bytes.Contains(out.Bytes(), []byte("Checking available disk space...")) {
+	if bytes.Contains(out.Bytes(), []byte("Checking free disk space...")) {
 		t.Fatalf("expected no disk check in output, got:\n%s", out.String())
 	}
 	if len(removed) != 2 {
 		t.Fatalf("expected 2 skipped archives to be deleted, got %d", len(removed))
-	}
-	if !bytes.Contains(out.Bytes(), []byte("deleted zips=2")) {
-		t.Fatalf("expected summary with deleted zips=2, got:\n%s", out.String())
 	}
 	for _, name := range []string{"a.zip", "b.zip"} {
 		entry, ok := stored.Archives[name]
@@ -803,9 +790,6 @@ func TestRunMissingZipDuringDeleteDoesNotReportError(t *testing.T) {
 	if bytes.Contains(out.Bytes(), []byte("zip delete errors")) {
 		t.Fatalf("did not expect zip delete errors for missing files, got:\n%s", out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("deleted zips=0")) {
-		t.Fatalf("expected deleted zips=0 when file is already absent, got:\n%s", out.String())
-	}
 	entry, ok := stored.Archives["a.zip"]
 	if !ok {
 		t.Fatalf("expected state entry for a.zip")
@@ -869,7 +853,7 @@ func TestRunPartialSuccessOnHardProcessingErrorsKeepsZipsInSafeMode(t *testing.T
 	if code != ExitRuntimeFail {
 		t.Fatalf("expected runtime fail on hard processing errors, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Status: PARTIAL_SUCCESS")) {
+	if !bytes.Contains(out.Bytes(), []byte("Run result: Completed with issues")) {
 		t.Fatalf("expected PARTIAL_SUCCESS status, got:\n%s", out.String())
 	}
 	if removeCalled {
@@ -938,12 +922,105 @@ func TestRunWarningOnlyProblemsStillSucceed(t *testing.T) {
 	if code != ExitSuccess {
 		t.Fatalf("expected success for warning-only problems, got %d\n%s", code, out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Status: SUCCESS")) {
+	if !bytes.Contains(out.Bytes(), []byte("Run result: Completed")) {
 		t.Fatalf("expected SUCCESS status, got:\n%s", out.String())
 	}
 	if removeCalls != 1 {
 		t.Fatalf("expected deferred zip deletion on success, got %d calls", removeCalls)
 	}
+}
+
+func TestRunWritesDetailedJSONReport(t *testing.T) {
+	restore := stubWizardDeps()
+	defer restore()
+
+	checkDependencies = func() []preflight.Dependency { return nil }
+	discoverZips = func(string) ([]preflight.ZipArchive, error) {
+		return []preflight.ZipArchive{{Name: "a.zip", Path: "/tmp/a.zip", Fingerprint: "f1"}}, nil
+	}
+	validateAll = func(zips []preflight.ZipArchive) preflight.IntegritySummary {
+		return preflight.IntegritySummary{
+			Checked:           []preflight.ArchiveIntegrity{{Archive: zips[0], FileCount: 1, UncompressedBytes: 100}},
+			TotalUncompressed: 100,
+			TotalZipBytes:     20,
+		}
+	}
+	checkDiskSpace = func(string, []preflight.ArchiveIntegrity) (preflight.SpaceCheck, error) {
+		return preflight.SpaceCheck{
+			AvailableBytes:          300,
+			RequiredBytes:           120,
+			RequiredWithDeleteBytes: 80,
+			Enough:                  true,
+			EnoughWithDelete:        true,
+		}, nil
+	}
+	loadState = func(string) (state.RunState, error) { return state.New(), nil }
+	saveState = func(string, state.RunState) error { return nil }
+	removeFile = func(string) error { return nil }
+	extractArchiveFile = func(string, string) (int, error) { return 1, nil }
+	processTakeout = func(string, func(processor.ProgressEvent)) (processor.Report, error) {
+		return processor.Report{
+			Summary: processor.Summary{
+				MediaFound:          2,
+				MetadataApplied:     1,
+				FilenameDateApplied: 1,
+				JSONRemoved:         1,
+				MissingJSON:         1,
+			},
+		}, nil
+	}
+
+	var out bytes.Buffer
+	code := Run(t.TempDir(), &out)
+	if code != ExitSuccess {
+		t.Fatalf("expected success, got %d\n%s", code, out.String())
+	}
+
+	reportPath := detailedReportPathFromOutput(out.String())
+	if reportPath == "" {
+		t.Fatalf("expected detailed report path in output, got:\n%s", out.String())
+	}
+
+	base := filepath.Base(reportPath)
+	matched, err := regexp.MatchString(`^report-\d{8}-\d{6}\.json$`, base)
+	if err != nil {
+		t.Fatalf("regex error: %v", err)
+	}
+	if !matched {
+		t.Fatalf("unexpected report file name %q", base)
+	}
+
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("expected report json at %s: %v", reportPath, err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("expected valid json report, got parse error: %v", err)
+	}
+	if got, _ := parsed["status"].(string); got != "SUCCESS" {
+		t.Fatalf("status mismatch: want SUCCESS, got %v", parsed["status"])
+	}
+	if got, ok := parsed["exit_code"].(float64); !ok || int(got) != ExitSuccess {
+		t.Fatalf("exit_code mismatch: want %d, got %v", ExitSuccess, parsed["exit_code"])
+	}
+	if _, ok := parsed["timings_ms"].(map[string]any); !ok {
+		t.Fatalf("expected timings_ms object in json report, got %T", parsed["timings_ms"])
+	}
+	if _, ok := parsed["metadata"].(map[string]any); !ok {
+		t.Fatalf("expected metadata object in json report, got %T", parsed["metadata"])
+	}
+}
+
+func detailedReportPathFromOutput(output string) string {
+	const prefix = "Detailed report: "
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	return ""
 }
 
 func stubWizardDeps() func() {
@@ -958,6 +1035,7 @@ func stubWizardDeps() func() {
 	origProcessTakeout := processTakeout
 	origRemoveFile := removeFile
 	origDetectTakeoutRoot := detectTakeoutRoot
+	origWriteReportJSON := writeReportJSON
 
 	return func() {
 		checkDependencies = origCheckDependencies
@@ -971,5 +1049,6 @@ func stubWizardDeps() func() {
 		processTakeout = origProcessTakeout
 		removeFile = origRemoveFile
 		detectTakeoutRoot = origDetectTakeoutRoot
+		writeReportJSON = origWriteReportJSON
 	}
 }

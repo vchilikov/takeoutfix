@@ -35,52 +35,76 @@ var (
 	extractArchiveFile = extract.ExtractArchive
 	processTakeout     = processor.RunWithProgress
 	removeFile         = os.Remove
+	writeReportJSON    = writeReportJSONImpl
 )
 
 func Run(cwd string, out io.Writer) int {
+	absCwd := cwd
+	if resolved, err := filepath.Abs(cwd); err == nil {
+		absCwd = resolved
+	}
+
 	runStartedAt := time.Now()
-	report := Report{Status: "FAILED"}
+	report := Report{
+		Status:         "FAILED",
+		Workdir:        absCwd,
+		StartedAtLocal: runStartedAt,
+	}
 	finish := func(code int) int {
-		report.TotalDuration = time.Since(runStartedAt)
+		finishedAt := time.Now()
+		report.ExitCode = code
+		report.FinishedAtLocal = finishedAt
+		report.TotalDuration = finishedAt.Sub(runStartedAt)
+		report.normalizeProblems()
+
+		reportPath, err := writeReportJSON(report.Workdir, report)
+		report.DetailedReportPath = reportPath
+		if err != nil {
+			report.DetailedReportWriteError = err.Error()
+			report.addProblem("report write errors", 1, err.Error())
+		}
+
 		printReport(out, report)
 		return code
 	}
-	writeLine(out, "TakeoutFix interactive mode")
-	writef(out, "Working directory: %s\n", cwd)
+	writeLine(out, "TakeoutFix")
+	writef(out, "Folder: %s\n", report.Workdir)
+	writeLine(out, "")
 
-	writeLine(out, "Checking dependencies...")
+	writef(out, "Step 1/3: Checking dependencies... ")
 	missing := checkDependencies()
 	if len(missing) > 0 {
+		writeLine(out, "missing")
 		var names []string
 		for _, dep := range missing {
 			names = append(names, dep.Name)
 		}
-		writef(out, "Missing dependencies: %s\n", strings.Join(names, ", "))
-		writeLine(out, "Install dependencies and rerun.")
-		writeLine(out, "macOS/Linux: curl -fsSL "+installerURLMacLinux+" | sh")
-		writeLine(out, "Windows (PowerShell): iwr -useb "+installerURLWindows+" | iex")
-		writeLine(out, "Manual fallback: install exiftool and ensure it is available in PATH.")
+		writef(out, "Please install: %s\n", strings.Join(names, ", "))
+		writeLine(out, "Quick install (macOS/Linux): curl -fsSL "+installerURLMacLinux+" | sh")
+		writeLine(out, "Quick install (Windows PowerShell): iwr -useb "+installerURLWindows+" | iex")
 		return finish(ExitPreflightFail)
 	}
-	writeLine(out, "Dependencies are OK.")
+	writeLine(out, "OK")
 
-	dest := filepath.Join(cwd, "takeoutfix-extracted")
-	statePath := filepath.Join(cwd, ".takeoutfix", "state.json")
+	dest := filepath.Join(report.Workdir, "takeoutfix-extracted")
+	statePath := filepath.Join(report.Workdir, ".takeoutfix", "state.json")
 	st := state.New()
 	lowSpaceDelete := false
 	deferredDelete := make([]preflight.ZipArchive, 0)
 
-	writeLine(out, "Scanning ZIP archives in current folder...")
+	writef(out, "Step 2/3: Looking for ZIP files... ")
 	zipScanStartedAt := time.Now()
-	zips, err := discoverZips(cwd)
+	zips, err := discoverZips(report.Workdir)
 	report.ZipScanDuration = time.Since(zipScanStartedAt)
 	if err != nil {
+		writeLine(out, "failed")
 		report.addProblem("zip scan errors", 1, err.Error())
 		return finish(ExitRuntimeFail)
 	}
 	report.ArchiveFound = len(zips)
 	if len(zips) == 0 {
-		processRoot, message, preflightFail, err := resolveNoZipProcessRoot(cwd, dest)
+		writeLine(out, "none found")
+		processRoot, message, preflightFail, err := resolveNoZipProcessRoot(report.Workdir, dest)
 		if err != nil {
 			report.addProblem("takeout content detection errors", 1, err.Error())
 			return finish(ExitRuntimeFail)
@@ -90,10 +114,12 @@ func Run(cwd string, out io.Writer) int {
 			return finish(ExitPreflightFail)
 		}
 		dest = processRoot
+	} else {
+		writef(out, "%d found\n", len(zips))
 	}
 
 	if len(zips) > 0 {
-		writeLine(out, "Validating ZIP integrity (all archives)...")
+		writeLine(out, "Checking ZIP integrity...")
 		zipValidateStartedAt := time.Now()
 		integrity := validateAll(zips)
 		report.ZipValidateDuration = time.Since(zipValidateStartedAt)
@@ -103,10 +129,10 @@ func Run(cwd string, out io.Writer) int {
 			report.CorruptNames = append(report.CorruptNames, corrupt.Archive.Name)
 		}
 		if report.ArchiveCorrupt > 0 {
-			writeLine(out, "Corrupt ZIP files found. Processing stopped.")
+			writeLine(out, "Some ZIP files are corrupted. Please re-download them and run again.")
 			return finish(ExitPreflightFail)
 		}
-		writeLine(out, "All ZIP archives are valid.")
+		writeLine(out, "ZIP files look good.")
 
 		st, err = loadState(statePath)
 		if err != nil {
@@ -123,36 +149,27 @@ func Run(cwd string, out io.Writer) int {
 
 		report.AutoDelete = true
 		if len(pending) > 0 {
-			writeLine(out, "Checking available disk space...")
+			writeLine(out, "Checking free disk space...")
 			diskCheckStartedAt := time.Now()
-			space, err := checkDiskSpace(cwd, pending)
+			space, err := checkDiskSpace(report.Workdir, pending)
 			report.DiskCheckDuration = time.Since(diskCheckStartedAt)
 			if err != nil {
 				report.addProblem("disk check errors", 1, err.Error())
 				return finish(ExitRuntimeFail)
 			}
 			report.Disk = space
-			writef(
-				out,
-				"Disk: available=%s, required=%s, required with auto-delete=%s\n",
-				preflight.FormatBytes(space.AvailableBytes),
-				preflight.FormatBytes(space.RequiredBytes),
-				preflight.FormatBytes(space.RequiredWithDeleteBytes),
-			)
 
 			if !space.EnoughWithDelete {
-				writeLine(out, "Not enough disk space even with auto-delete enabled.")
+				writeLine(out, "Not enough free disk space to continue.")
 				return finish(ExitPreflightFail)
 			}
 			if !space.Enough {
 				lowSpaceDelete = true
-				writeLine(out, "Low-space mode enabled: ZIP archives will be deleted immediately after extraction.")
+				writeLine(out, "Low-space mode: ZIP files will be deleted right after extraction.")
 			}
 		}
-		writef(out, "Extracting archives into: %s\n", dest)
+		writeLine(out, "Preparing files from ZIP archives...")
 		extractStartedAt := time.Now()
-		totalArchives := len(zips)
-		doneArchives := 0
 		for _, archive := range zips {
 			if shouldSkip(st, archive.Name, archive.Fingerprint) {
 				entry := st.Archives[archive.Name]
@@ -173,8 +190,6 @@ func Run(cwd string, out io.Writer) int {
 				}
 
 				report.SkippedArchives++
-				doneArchives++
-				writef(out, "Extraction progress: %d/%d (%d%%) skipped: %s\n", doneArchives, totalArchives, progressPercent(doneArchives, totalArchives), archive.Name)
 				continue
 			}
 
@@ -187,8 +202,6 @@ func Run(cwd string, out io.Writer) int {
 
 			report.ExtractedArchives++
 			report.ExtractedFiles += filesExtracted
-			doneArchives++
-			writef(out, "Extraction progress: %d/%d (%d%%) extracted: %s\n", doneArchives, totalArchives, progressPercent(doneArchives, totalArchives), archive.Name)
 
 			entry := state.ArchiveState{Fingerprint: archive.Fingerprint, Extracted: true}
 			if lowSpaceDelete {
@@ -204,18 +217,20 @@ func Run(cwd string, out io.Writer) int {
 			}
 		}
 		report.ExtractDuration = time.Since(extractStartedAt)
+		writeLine(out, "Preparing files from ZIP archives... done")
 	}
 
-	writeLine(out, "Applying metadata and cleaning matched JSON...")
+	writeLine(out, "Step 3/3: Applying metadata and cleaning JSON...")
+	writeLine(out, "Progress: 0%")
 	processStartedAt := time.Now()
-	lastProcessPercent := -1
+	lastProcessBucket := 0
 	sawProcessEvent := false
 	procReport, err := processTakeout(dest, func(event processor.ProgressEvent) {
 		sawProcessEvent = true
-		percent := progressPercent(event.Processed, event.Total)
-		if event.Processed == 1 || event.Processed == event.Total || percent != lastProcessPercent {
-			writef(out, "Processing progress: %d/%d (%d%%) media: %s\n", event.Processed, event.Total, percent, event.Media)
-			lastProcessPercent = percent
+		bucket := progressBucket10(event.Processed, event.Total)
+		if bucket > lastProcessBucket {
+			writef(out, "Progress: %d%%\n", bucket)
+			lastProcessBucket = bucket
 		}
 	})
 	if err != nil {
@@ -224,8 +239,8 @@ func Run(cwd string, out io.Writer) int {
 		return finish(ExitRuntimeFail)
 	}
 	report.ProcessDuration = time.Since(processStartedAt)
-	if !sawProcessEvent {
-		writeLine(out, "Processing progress: 0/0 (0%)")
+	if sawProcessEvent && lastProcessBucket < 100 {
+		writeLine(out, "Progress: 100%")
 	}
 
 	report.MediaFound = procReport.Summary.MediaFound
@@ -247,7 +262,7 @@ func Run(cwd string, out io.Writer) int {
 	if hasHardProcessingProblems(procReport.ProblemCounts) {
 		report.Status = "PARTIAL_SUCCESS"
 		if !lowSpaceDelete {
-			writeLine(out, "Hard processing errors detected. Keeping ZIP archives for rerun.")
+			writeLine(out, "Some files could not be updated. ZIP files were kept for a rerun.")
 		}
 		return finish(ExitRuntimeFail)
 	}
@@ -275,9 +290,9 @@ func resolveNoZipProcessRoot(cwd string, extractedRoot string) (string, string, 
 	info, err := os.Stat(extractedRoot)
 	if err == nil {
 		if !info.IsDir() {
-			return "", "No ZIP archives found and extracted data path is not a directory.", true, nil
+			return "", "Found takeoutfix-extracted, but it is not a folder.", true, nil
 		}
-		return extractedRoot, "No ZIP archives found. Re-processing previously extracted data...", false, nil
+		return extractedRoot, fmt.Sprintf("Using previously extracted Takeout data from: %s", extractedRoot), false, nil
 	}
 
 	if !os.IsNotExist(err) {
@@ -289,10 +304,10 @@ func resolveNoZipProcessRoot(cwd string, extractedRoot string) (string, string, 
 		return "", "", false, fmt.Errorf("detect extracted takeout content: %w", detectErr)
 	}
 	if !processable {
-		return "", "No ZIP archives found and no extracted data.", true, nil
+		return "", "No ZIP files or extracted Takeout data found in this folder.", true, nil
 	}
 
-	return processRoot, fmt.Sprintf("No ZIP archives found. Processing existing Takeout content from: %s", processRoot), false, nil
+	return processRoot, fmt.Sprintf("Using existing Takeout content from: %s", processRoot), false, nil
 }
 
 func progressPercent(done int, total int) int {
@@ -306,6 +321,17 @@ func progressPercent(done int, total int) int {
 		done = total
 	}
 	return done * 100 / total
+}
+
+func progressBucket10(done int, total int) int {
+	percent := progressPercent(done, total)
+	if percent < 0 {
+		return 0
+	}
+	if percent > 100 {
+		return 100
+	}
+	return (percent / 10) * 10
 }
 
 func hasHardProcessingProblems(problemCounts map[string]int) bool {

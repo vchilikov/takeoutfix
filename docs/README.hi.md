@@ -63,18 +63,18 @@ Windows (PowerShell):
 - Supported photos और videos में metadata apply हो जाएगा।
 - JSON के `Tags` को `Keywords` और `Subject` में लिखा जाएगा।
 - अगर JSON में capture timestamp missing या invalid है और filename `YYYY-MM-DD HH.MM.SS` से शुरू होता है, तो date filename से restore की जाएगी।
+- Detailed run report `./.takeoutfix/reports/report-YYYYMMDD-HHMMSS.json` में save होगा।
 - आप `./takeoutfix-extracted/Takeout` को अपने नए storage में upload कर सकते हैं।
 
 ## Common Issues
 
-- `No ZIP archives found in current folder.`
-  - TakeoutFix working folder में पहले से extracted Takeout content को अपने-आप detect करता है।
-  - अगर यह message फिर भी आए, तो सभी Takeout ZIP parts को working folder के top level में रखें, या tool को उस folder से चलाएं जहां extracted Takeout content मौजूद हो।
-- `Corrupt ZIP files found. Processing stopped.`
+- `No ZIP files or extracted Takeout data found in this folder.`
+  - सभी Takeout ZIP parts को working folder के top level में रखें, या tool को उस folder से चलाएं जहां extracted Takeout content मौजूद हो।
+- `Some ZIP files are corrupted. Please re-download them and run again.`
   - Google Takeout से खराब archive parts दोबारा डाउनलोड करें और rerun करें।
-- `Missing dependencies: exiftool`
+- `Step 1/3: Checking dependencies... missing`
   - ऊपर दिया recommended one-liner command चलाएं, या `exiftool` manually install करें।
-- `Not enough disk space even with auto-delete enabled.`
+- `Not enough free disk space to continue.`
   - डिस्क में space खाली करें और दोबारा चलाएं।
 - macOS app verify error दिखाता है
   - quarantine हटाकर फिर चलाएं:
