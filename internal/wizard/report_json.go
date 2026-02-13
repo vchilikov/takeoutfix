@@ -80,8 +80,8 @@ type jsonTimingsMS struct {
 	Total       int64 `json:"total"`
 }
 
-func writeReportJSONImpl(workdir string, report Report) (string, error) {
-	reportDir := filepath.Join(workdir, ".takeoutfix", "reports")
+func writeReportJSONImpl(report Report) (string, error) {
+	reportDir := filepath.Join(report.Workdir, ".takeoutfix", "reports")
 	if err := os.MkdirAll(reportDir, 0o755); err != nil {
 		return "", fmt.Errorf("create report directory: %w", err)
 	}
