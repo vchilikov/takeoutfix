@@ -1,6 +1,7 @@
 package preflight
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,7 +62,7 @@ func takeoutRootCandidates(path string) ([]string, error) {
 	nestedTakeout := filepath.Join(path, takeoutDirName)
 	info, err := statPathForContent(nestedTakeout)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return candidates, nil
 		}
 		return nil, err

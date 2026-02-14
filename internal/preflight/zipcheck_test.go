@@ -106,7 +106,7 @@ func TestValidateAll_SingleArchive(t *testing.T) {
 
 func TestValidateAll_MultipleArchivesKeepsInputOrder(t *testing.T) {
 	dir := t.TempDir()
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		name := filepath.Join(dir, fmt.Sprintf("archive-%d.zip", i))
 		if err := writeZip(name, map[string]string{"f.txt": "v"}); err != nil {
 			t.Fatalf("write zip %s: %v", name, err)

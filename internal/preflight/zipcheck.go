@@ -2,12 +2,13 @@ package preflight
 
 import (
 	"archive/zip"
+	"cmp"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -65,8 +66,8 @@ func DiscoverTopLevelZips(cwd string) ([]ZipArchive, error) {
 		})
 	}
 
-	sort.Slice(zips, func(i, j int) bool {
-		return strings.ToLower(zips[i].Name) < strings.ToLower(zips[j].Name)
+	slices.SortFunc(zips, func(a, b ZipArchive) int {
+		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 
 	return zips, nil
@@ -91,10 +92,7 @@ func ValidateAll(zips []ZipArchive) IntegritySummary {
 		check ArchiveIntegrity
 	}
 
-	workers := runtime.NumCPU()
-	if workers < 1 {
-		workers = 1
-	}
+	workers := max(runtime.NumCPU(), 1)
 	if workers > len(zips) {
 		workers = len(zips)
 	}
@@ -104,16 +102,14 @@ func ValidateAll(zips []ZipArchive) IntegritySummary {
 
 	var wg sync.WaitGroup
 	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range jobs {
 				results <- result{
 					index: j.index,
 					check: ValidateZip(j.archive),
 				}
 			}
-		}()
+		})
 	}
 
 	for i, z := range zips {

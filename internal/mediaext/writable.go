@@ -75,7 +75,7 @@ func normalizeExtension(ext string) string {
 
 func parseWritableExtensionSet(output string) map[string]struct{} {
 	set := make(map[string]struct{})
-	for _, token := range strings.Fields(output) {
+	for token := range strings.FieldsSeq(output) {
 		cleaned := strings.Trim(token, " \t\r\n,;:()[]{}")
 		if cleaned == "" {
 			continue

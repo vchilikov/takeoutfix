@@ -2,12 +2,14 @@ package metadata
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -89,7 +91,7 @@ func ApplyDetailedWithRunner(
 ) (ApplyResult, error) {
 	result := ApplyResult{}
 	if run == nil {
-		return result, fmt.Errorf("nil exiftool runner")
+		return result, errors.New("nil exiftool runner")
 	}
 
 	metadataPath, mediaDatePath, useXMPSidecar := resolveWriteTargets(mediaPath)
@@ -567,12 +569,9 @@ func looksLikeCorruptExif(output string) bool {
 
 func hasSupportedExtension(path string) bool {
 	ext := filepath.Ext(path)
-	for _, supportedExt := range mediaext.Supported {
-		if strings.EqualFold(ext, supportedExt) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(mediaext.Supported, func(s string) bool {
+		return strings.EqualFold(ext, s)
+	})
 }
 
 func isHEIFContainer(path string) bool {

@@ -3,9 +3,10 @@ package wizard
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -112,16 +113,12 @@ func writeReportJSONImpl(report Report) (string, error) {
 func buildJSONReport(report Report) jsonReport {
 	problems := make([]jsonProblem, 0, len(report.ProblemCounts))
 	if len(report.ProblemCounts) > 0 {
-		categories := make([]string, 0, len(report.ProblemCounts))
-		for category := range report.ProblemCounts {
-			categories = append(categories, category)
-		}
-		sort.Strings(categories)
+		categories := slices.Sorted(maps.Keys(report.ProblemCounts))
 		for _, category := range categories {
 			problems = append(problems, jsonProblem{
 				Category: category,
 				Count:    report.ProblemCounts[category],
-				Samples:  append([]string(nil), report.ProblemSample[category]...),
+				Samples:  slices.Clone(report.ProblemSample[category]),
 			})
 		}
 	}
@@ -137,7 +134,7 @@ func buildJSONReport(report Report) jsonReport {
 			Found:        report.ArchiveFound,
 			Valid:        report.ArchiveValid,
 			Corrupt:      report.ArchiveCorrupt,
-			CorruptNames: append([]string(nil), report.CorruptNames...),
+			CorruptNames: slices.Clone(report.CorruptNames),
 		},
 		Disk: jsonDisk{
 			AvailableBytes:          report.Disk.AvailableBytes,
@@ -152,7 +149,7 @@ func buildJSONReport(report Report) jsonReport {
 			SkippedArchives:   report.SkippedArchives,
 			ExtractedFiles:    report.ExtractedFiles,
 			DeletedZips:       report.DeletedZips,
-			DeleteErrors:      append([]string(nil), report.DeleteErrors...),
+			DeleteErrors:      slices.Clone(report.DeleteErrors),
 		},
 		Metadata: jsonMetadata{
 			MediaFound:          report.MediaFound,

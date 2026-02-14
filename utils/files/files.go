@@ -1,9 +1,10 @@
 package files
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/vchilikov/takeout-fix/internal/mediaext"
@@ -65,9 +66,9 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	}
 
 	for dir := range mediaByDir {
-		sort.Strings(mediaByDir[dir])
+		slices.Sort(mediaByDir[dir])
 	}
-	sort.Strings(allJSON)
+	slices.Sort(allJSON)
 
 	usedJSON := make(map[string]struct{})
 	var unresolvedMedia []string
@@ -149,7 +150,7 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 		globalIndex[key] = append(globalIndex[key], jsonRel)
 	}
 
-	sort.Strings(unresolvedMedia)
+	slices.Sort(unresolvedMedia)
 	globalCandidatesByMedia := make(map[string][]string, len(unresolvedMedia))
 	globalCandidateUsage := make(map[string]int)
 	globalCandidateClaims := make(map[string][]string)
@@ -215,8 +216,8 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 		}
 	}
 
-	sort.Strings(result.MissingJSON)
-	sort.Strings(result.UnusedJSON)
+	slices.Sort(result.MissingJSON)
+	slices.Sort(result.UnusedJSON)
 
 	return result, nil
 }
@@ -233,12 +234,7 @@ func collectGlobalCandidates(keys []string, globalIndex map[string][]string, use
 		}
 	}
 
-	candidates := make([]string, 0, len(unique))
-	for jsonRel := range unique {
-		candidates = append(candidates, jsonRel)
-	}
-	sort.Strings(candidates)
-	return candidates
+	return slices.Sorted(maps.Keys(unique))
 }
 
 func applyGlobalCandidateRules(mediaRel string, candidates []string) []string {
@@ -366,12 +362,7 @@ func mediaLookupKeys(mediaFile string) []string {
 		}
 	}
 
-	out := make([]string, 0, len(keys))
-	for k := range keys {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
+	return slices.Sorted(maps.Keys(keys))
 }
 
 func joinRelPath(dir string, base string) string {
@@ -382,12 +373,7 @@ func joinRelPath(dir string, base string) string {
 }
 
 func sortedDirs(m map[string][]string) []string {
-	dirs := make([]string, 0, len(m))
-	for dir := range m {
-		dirs = append(dirs, dir)
-	}
-	sort.Strings(dirs)
-	return dirs
+	return slices.Sorted(maps.Keys(m))
 }
 
 func isJSONFile(name string) bool {
@@ -399,13 +385,7 @@ func isMediaCandidate(name string) bool {
 }
 
 func isSupportedMediaExtension(ext string) bool {
-	if ext == "" {
-		return false
-	}
-	for _, supportedExt := range mediaext.Supported {
-		if strings.EqualFold(ext, supportedExt) {
-			return true
-		}
-	}
-	return false
+	return ext != "" && slices.ContainsFunc(mediaext.Supported, func(s string) bool {
+		return strings.EqualFold(ext, s)
+	})
 }

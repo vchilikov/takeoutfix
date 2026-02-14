@@ -1,6 +1,7 @@
 package wizard
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -300,7 +301,7 @@ func resolveNoZipProcessRoot(cwd string, extractedRoot string) (string, string, 
 		return extractedRoot, fmt.Sprintf("Using previously extracted Takeout data from: %s", extractedRoot), false, nil
 	}
 
-	if !os.IsNotExist(err) {
+	if !errors.Is(err, os.ErrNotExist) {
 		return "", "", false, fmt.Errorf("access extracted data path %q: %w", extractedRoot, err)
 	}
 
@@ -348,7 +349,7 @@ func hasHardProcessingProblems(problemCounts map[string]int) bool {
 
 func deleteArchiveZip(report *Report, archive preflight.ZipArchive) bool {
 	if err := removeFile(archive.Path); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return true
 		}
 		report.DeleteErrors = append(report.DeleteErrors, archive.Name)
