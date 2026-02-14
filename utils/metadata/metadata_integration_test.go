@@ -210,7 +210,7 @@ func valuesFromTag(value any) []string {
 			}
 		}
 	case string:
-		for _, item := range strings.Split(v, ",") {
+		for item := range strings.SplitSeq(v, ",") {
 			item = strings.TrimSpace(item)
 			if item != "" {
 				out = append(out, item)

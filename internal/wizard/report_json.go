@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -116,7 +116,7 @@ func buildJSONReport(report Report) jsonReport {
 		for category := range report.ProblemCounts {
 			categories = append(categories, category)
 		}
-		sort.Strings(categories)
+		slices.Sort(categories)
 		for _, category := range categories {
 			problems = append(problems, jsonProblem{
 				Category: category,

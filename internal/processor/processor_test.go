@@ -3,7 +3,7 @@ package processor
 import (
 	"errors"
 	"path/filepath"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/vchilikov/takeout-fix/utils/extensions"
@@ -138,7 +138,7 @@ func TestRunWithProgress_AggregatesResultsAndContinuesOnFileErrors(t *testing.T)
 		}
 		gotProcessed = append(gotProcessed, event.Processed)
 	}
-	sort.Ints(gotProcessed)
+	slices.Sort(gotProcessed)
 	for i, got := range gotProcessed {
 		if got != i+1 {
 			t.Fatalf("progress processed values mismatch: got %v", gotProcessed)

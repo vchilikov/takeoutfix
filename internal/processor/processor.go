@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"sync"
 
 	"github.com/vchilikov/takeout-fix/internal/exiftool"
@@ -87,7 +87,7 @@ func RunWithProgress(rootPath string, onProgress func(ProgressEvent)) (Report, e
 	for mediaFile := range scanResult.Pairs {
 		mediaFiles = append(mediaFiles, mediaFile)
 	}
-	sort.Strings(mediaFiles)
+	slices.Sort(mediaFiles)
 	total := len(mediaFiles)
 
 	if total > 0 {
@@ -105,10 +105,7 @@ func RunWithProgress(rootPath string, onProgress func(ProgressEvent)) (Report, e
 			metaErr   error
 		}
 
-		workers := runtime.NumCPU()
-		if workers < 1 {
-			workers = 1
-		}
+		workers := max(runtime.NumCPU(), 1)
 		if workers > total {
 			workers = total
 		}
@@ -118,9 +115,7 @@ func RunWithProgress(rootPath string, onProgress func(ProgressEvent)) (Report, e
 		var wg sync.WaitGroup
 
 		for range workers {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				session, err := openExiftoolSession()
 				if err != nil {
 					session = nil
@@ -152,7 +147,7 @@ func RunWithProgress(rootPath string, onProgress func(ProgressEvent)) (Report, e
 						metaErr:   metaErr,
 					}
 				}
-			}()
+			})
 		}
 
 		for _, mediaFile := range mediaFiles {
@@ -217,7 +212,7 @@ func RunWithProgress(rootPath string, onProgress func(ProgressEvent)) (Report, e
 			report.Summary.JSONKeptDueToErrors++
 		}
 	}
-	sort.Strings(jsonToRemove)
+	slices.Sort(jsonToRemove)
 
 	for _, jsonFile := range jsonToRemove {
 		if err := removeJSONFile(filepath.Join(rootPath, jsonFile)); err != nil {

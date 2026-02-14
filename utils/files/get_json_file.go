@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -124,7 +124,7 @@ func findSupplementalJSONByStem(stem string, jsonFiles map[string]struct{}) []st
 	for jsonFile := range unique {
 		matches = append(matches, jsonFile)
 	}
-	sort.Strings(matches)
+	slices.Sort(matches)
 	return matches
 }
 
@@ -159,7 +159,7 @@ func findJSONCandidatesByBasename(mediaFile string, jsonFiles map[string]struct{
 			matches = append(matches, jsonFile)
 		}
 	}
-	sort.Strings(matches)
+	slices.Sort(matches)
 	return matches
 }
 
@@ -193,7 +193,7 @@ func filterCandidatesByDuplicateIndex(mediaFile string, candidates []string) []s
 		}
 		return candidates
 	}
-	sort.Strings(filtered)
+	slices.Sort(filtered)
 	return filtered
 }
 
@@ -313,8 +313,8 @@ func stripKnownMediaExtension(name string) string {
 	for range 2 {
 		found := false
 		for _, ext := range mediaext.Supported {
-			if strings.HasSuffix(name, ext) {
-				name = strings.TrimSuffix(name, ext)
+			if before, ok := strings.CutSuffix(name, ext); ok {
+				name = before
 				found = true
 				break
 			}

@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -89,7 +90,7 @@ func ApplyDetailedWithRunner(
 ) (ApplyResult, error) {
 	result := ApplyResult{}
 	if run == nil {
-		return result, fmt.Errorf("nil exiftool runner")
+		return result, errors.New("nil exiftool runner")
 	}
 
 	metadataPath, mediaDatePath, useXMPSidecar := resolveWriteTargets(mediaPath)

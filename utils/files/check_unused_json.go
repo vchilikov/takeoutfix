@@ -1,6 +1,6 @@
 package files
 
-import "sort"
+import "slices"
 
 func checkUnusedJson(jsonFiles map[string]struct{}, usedJsonFiles map[string]struct{}) []string {
 	var unused []string
@@ -11,6 +11,6 @@ func checkUnusedJson(jsonFiles map[string]struct{}, usedJsonFiles map[string]str
 		}
 	}
 
-	sort.Strings(unused)
+	slices.Sort(unused)
 	return unused
 }

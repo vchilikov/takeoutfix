@@ -159,8 +159,8 @@ func (s *Session) readUntilReady() (readUntilReadyResult, error) {
 			break
 		}
 
-		if strings.HasPrefix(trimmed, statusMarkerPrefix) {
-			statusValue := strings.TrimSpace(strings.TrimPrefix(trimmed, statusMarkerPrefix))
+		if after, ok := strings.CutPrefix(trimmed, statusMarkerPrefix); ok {
+			statusValue := strings.TrimSpace(after)
 			if status, convErr := strconv.Atoi(statusValue); convErr == nil {
 				result.statusFound = true
 				result.status = status
@@ -217,7 +217,7 @@ func buildStatusError(status int, output string) error {
 }
 
 func hasErrorLine(output string) bool {
-	for _, line := range strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.ReplaceAll(output, "\r\n", "\n"), "\n") {
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "error:") {
 			return true
 		}
@@ -226,7 +226,7 @@ func hasErrorLine(output string) bool {
 }
 
 func firstErrorLine(output string) string {
-	for _, line := range strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.ReplaceAll(output, "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(strings.ToLower(trimmed), "error:") {
 			return trimmed
@@ -238,7 +238,7 @@ func firstErrorLine(output string) string {
 func validateArgs(args []string) error {
 	for _, arg := range args {
 		if strings.ContainsAny(arg, "\r\n") || strings.IndexByte(arg, 0) >= 0 {
-			return fmt.Errorf("invalid exiftool argument: contains newline or null byte")
+			return errors.New("invalid exiftool argument: contains newline or null byte")
 		}
 	}
 	return nil

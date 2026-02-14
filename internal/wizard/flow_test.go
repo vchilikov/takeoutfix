@@ -1045,9 +1045,9 @@ func TestRunDoesNotPrintDetailedPathWhenReportWriteFails(t *testing.T) {
 
 func detailedReportPathFromOutput(output string) string {
 	const prefix = "Detailed report: "
-	for _, line := range strings.Split(output, "\n") {
-		if strings.HasPrefix(line, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	for line := range strings.SplitSeq(output, "\n") {
+		if after, ok := strings.CutPrefix(line, prefix); ok {
+			return strings.TrimSpace(after)
 		}
 	}
 	return ""

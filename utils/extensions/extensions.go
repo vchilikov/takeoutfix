@@ -2,6 +2,7 @@ package extensions
 
 import (
 	crand "crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -68,7 +69,7 @@ func runExiftool(args []string) (string, error) {
 
 func getNewExtension(mediaPath string, run func(args []string) (string, error)) (string, error) {
 	if run == nil {
-		return "", fmt.Errorf("nil exiftool runner")
+		return "", errors.New("nil exiftool runner")
 	}
 
 	out, err := run([]string{"-p", ".$FileTypeExtension", patharg.Safe(mediaPath)})
@@ -133,7 +134,7 @@ func getNewFileName(baseFileName string, newExtension string) (string, error) {
 	}
 
 	const maxAttempts = 10
-	for i := 0; i < maxAttempts; i++ {
+	for range maxAttempts {
 		suffix, err := generateRandomSuffix()
 		if err != nil {
 			return "", fmt.Errorf("could not generate random suffix: %w", err)
@@ -153,7 +154,7 @@ func generateRandomSuffix() (string, error) {
 
 func generateRandomSuffixFromReader(randomSource io.Reader) (string, error) {
 	if randomSource == nil {
-		return "", fmt.Errorf("nil random source")
+		return "", errors.New("nil random source")
 	}
 
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"

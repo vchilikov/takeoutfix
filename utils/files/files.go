@@ -3,7 +3,7 @@ package files
 import (
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/vchilikov/takeout-fix/internal/mediaext"
@@ -65,9 +65,9 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	}
 
 	for dir := range mediaByDir {
-		sort.Strings(mediaByDir[dir])
+		slices.Sort(mediaByDir[dir])
 	}
-	sort.Strings(allJSON)
+	slices.Sort(allJSON)
 
 	usedJSON := make(map[string]struct{})
 	var unresolvedMedia []string
@@ -149,7 +149,7 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 		globalIndex[key] = append(globalIndex[key], jsonRel)
 	}
 
-	sort.Strings(unresolvedMedia)
+	slices.Sort(unresolvedMedia)
 	globalCandidatesByMedia := make(map[string][]string, len(unresolvedMedia))
 	globalCandidateUsage := make(map[string]int)
 	globalCandidateClaims := make(map[string][]string)
@@ -215,8 +215,8 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 		}
 	}
 
-	sort.Strings(result.MissingJSON)
-	sort.Strings(result.UnusedJSON)
+	slices.Sort(result.MissingJSON)
+	slices.Sort(result.UnusedJSON)
 
 	return result, nil
 }
@@ -237,7 +237,7 @@ func collectGlobalCandidates(keys []string, globalIndex map[string][]string, use
 	for jsonRel := range unique {
 		candidates = append(candidates, jsonRel)
 	}
-	sort.Strings(candidates)
+	slices.Sort(candidates)
 	return candidates
 }
 
@@ -370,7 +370,7 @@ func mediaLookupKeys(mediaFile string) []string {
 	for k := range keys {
 		out = append(out, k)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -386,7 +386,7 @@ func sortedDirs(m map[string][]string) []string {
 	for dir := range m {
 		dirs = append(dirs, dir)
 	}
-	sort.Strings(dirs)
+	slices.Sort(dirs)
 	return dirs
 }
 

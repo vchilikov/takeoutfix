@@ -108,7 +108,7 @@ func ensureNoSymlinkComponents(base string, target string) error {
 	}
 
 	current := cleanBase
-	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+	for part := range strings.SplitSeq(rel, string(os.PathSeparator)) {
 		current = filepath.Join(current, part)
 		if err := ensureExistingPathNotSymlink(current); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
