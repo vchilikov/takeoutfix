@@ -111,6 +111,7 @@ func findSupplementalJSONByStem(stem string, jsonFiles map[string]struct{}) []st
 			continue
 		}
 		base := strings.TrimSuffix(lower, ".json")
+		base = canonicalizeJSONStem(base)
 		base = trailingNumberSuffixRe.ReplaceAllString(base, "")
 		if !strings.HasPrefix(base, lowerStem+".") {
 			continue
@@ -125,8 +126,9 @@ func findSupplementalJSONByStem(stem string, jsonFiles map[string]struct{}) []st
 }
 
 func findJSONCaseInsensitive(name string, jsonFiles map[string]struct{}) (string, bool) {
+	target := canonicalizeJSONNameForMatch(name)
 	for jsonFile := range jsonFiles {
-		if strings.EqualFold(jsonFile, name) {
+		if canonicalizeJSONNameForMatch(jsonFile) == target {
 			return jsonFile, true
 		}
 	}
@@ -176,18 +178,11 @@ func filterCandidatesByDuplicateIndex(mediaFile string, candidates []string) []s
 				filtered = append(filtered, candidate)
 			}
 		default:
-			// Base media (without "(n)") prefers base sidecar naming.
+			// Base media (without "(n)") only matches base sidecar naming.
 			if !jsonHasExplicitIndex {
 				filtered = append(filtered, candidate)
 			}
 		}
-	}
-
-	if len(filtered) == 0 {
-		if mediaHasExplicitIndex {
-			return nil
-		}
-		return candidates
 	}
 	slices.Sort(filtered)
 	return filtered
@@ -205,6 +200,7 @@ func extractMediaDuplicateIndexInfo(mediaFile string) (int, bool) {
 func extractJSONDuplicateIndexInfo(jsonFile string) (int, bool) {
 	name := strings.ToLower(filepath.Base(jsonFile))
 	name = strings.TrimSuffix(name, ".json")
+	name = canonicalizeJSONStem(name)
 
 	// Keep legacy sidecar style priority: ...supplemental-metadata(n).json
 	if index, ok := extractTrailingDuplicateIndexInfo(name); ok {
@@ -247,9 +243,24 @@ func normalizeJSONKeyWithOptions(jsonFile string, stripRandomSuffix bool) string
 		return ""
 	}
 	name = strings.TrimSuffix(name, ".json")
+	name = canonicalizeJSONStem(name)
 	name = trailingNumberSuffixRe.ReplaceAllString(name, "")
 	name = stripSupplementalSuffix(name)
 	return normalizeNameKeyWithOptions(name, stripRandomSuffix)
+}
+
+func canonicalizeJSONStem(stem string) string {
+	return strings.TrimRight(stem, ".")
+}
+
+func canonicalizeJSONNameForMatch(name string) string {
+	lower := strings.ToLower(name)
+	if !strings.HasSuffix(lower, ".json") {
+		return lower
+	}
+	stem := strings.TrimSuffix(lower, ".json")
+	stem = canonicalizeJSONStem(stem)
+	return stem + ".json"
 }
 
 func isSupplementalPrefix(s string) bool {

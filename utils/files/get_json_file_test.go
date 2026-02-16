@@ -78,6 +78,12 @@ func TestGetJsonFile(t *testing.T) {
 			want:      "PXL_001.JPG.json",
 		},
 		{
+			name:      "double-dot json matches direct stem",
+			mediaFile: "WhatsApp Video 2025-12-29 at 01.44.38 (1).mp4",
+			jsonFiles: map[string]struct{}{"WhatsApp Video 2025-12-29 at 01.44.38 (1).mp4..json": {}},
+			want:      "WhatsApp Video 2025-12-29 at 01.44.38 (1).mp4..json",
+		},
+		{
 			name:      "idempotent after extension rename",
 			mediaFile: "IMG_0001.png",
 			jsonFiles: map[string]struct{}{"IMG_0001.jpg.json": {}},
@@ -130,10 +136,10 @@ func TestGetJsonFile(t *testing.T) {
 			want:      "IMG_0001.jpg.supplemental-met.json",
 		},
 		{
-			name:      "truncated supplemental with dedup number",
+			name:      "base media does not match truncated supplemental with explicit dedup number",
 			mediaFile: "IMG_0001.jpg",
 			jsonFiles: map[string]struct{}{"IMG_0001.jpg.suppl(1).json": {}},
-			want:      "IMG_0001.jpg.suppl(1).json",
+			wantErr:   true,
 		},
 		{
 			name:      "double extension mp4.mov with truncated supplemental",
@@ -231,6 +237,39 @@ func TestGetJsonFile(t *testing.T) {
 				"20180905_180723.jpg.supplemental-metadata(0).json": {},
 			},
 			want: "20180905_180723.jpg.supplemental-metadata.json",
+		},
+		{
+			name:      "double-dot json with explicit duplicate index matches duplicate media",
+			mediaFile: "clip(1).mp4",
+			jsonFiles: map[string]struct{}{
+				"clip.mp4.json":     {},
+				"clip(1).mp4..json": {},
+			},
+			want: "clip(1).mp4..json",
+		},
+		{
+			name:      "double-dot json with explicit duplicate index does not match base media",
+			mediaFile: "clip.mp4",
+			jsonFiles: map[string]struct{}{
+				"clip(1).mp4..json": {},
+			},
+			wantErr: true,
+		},
+		{
+			name:      "base media does not match media stem supplemental duplicate index when only explicit candidate exists",
+			mediaFile: "20160321_192953.jpg",
+			jsonFiles: map[string]struct{}{
+				"20160321_192953(0).jpg.supplemental-metadata.json": {},
+			},
+			wantErr: true,
+		},
+		{
+			name:      "base media does not match trailing supplemental duplicate index when only explicit candidate exists",
+			mediaFile: "20160321_192953.jpg",
+			jsonFiles: map[string]struct{}{
+				"20160321_192953.jpg.supplemental-metadata(0).json": {},
+			},
+			wantErr: true,
 		},
 		{
 			name:      "not found",

@@ -63,6 +63,11 @@ func TestNormalizeJSONKey(t *testing.T) {
 			in:   "IMG_0001(12).JPG.supplemental-metada.json",
 			want: "img_0001",
 		},
+		{
+			name: "double-dot json suffix",
+			in:   "WhatsApp Video 2025-12-29 at 01.44.38 (1).mp4..json",
+			want: "whatsapp video 2025-12-29 at 01.44.38 ",
+		},
 	}
 
 	for _, tt := range tests {
