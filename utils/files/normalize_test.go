@@ -53,6 +53,16 @@ func TestNormalizeJSONKey(t *testing.T) {
 			in:   "VID_0001.mp4.mov.supplemental-m.json",
 			want: "vid_0001",
 		},
+		{
+			name: "duplicate index in media stem with supplemental metadata",
+			in:   "IMG_0001(0).jpg.supplemental-metadata.json",
+			want: "img_0001",
+		},
+		{
+			name: "duplicate index in media stem with truncated supplemental suffix",
+			in:   "IMG_0001(12).JPG.supplemental-metada.json",
+			want: "img_0001",
+		},
 	}
 
 	for _, tt := range tests {

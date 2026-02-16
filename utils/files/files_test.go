@@ -291,6 +291,42 @@ func TestScanTakeout_DuplicateIndexPairsResolvedLocally(t *testing.T) {
 	}
 }
 
+func TestScanTakeout_DuplicateIndexMediaStemSupplementalPairsResolvedLocally(t *testing.T) {
+	root := t.TempDir()
+
+	mediaBase := "20170530_170805.jpg"
+	mediaDup := "20170530_170805(0).jpg"
+	jsonBase := "20170530_170805.jpg.supplemental-metadata.json"
+	jsonDup := "20170530_170805(0).jpg.supplemental-metadata.json"
+
+	for _, name := range []string{mediaBase, mediaDup, jsonBase, jsonDup} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	result, err := ScanTakeout(root)
+	if err != nil {
+		t.Fatalf("ScanTakeout error: %v", err)
+	}
+
+	if got := result.Pairs[mediaBase]; got != jsonBase {
+		t.Fatalf("base pair mismatch: want %q, got %q", jsonBase, got)
+	}
+	if got := result.Pairs[mediaDup]; got != jsonDup {
+		t.Fatalf("duplicate pair mismatch: want %q, got %q", jsonDup, got)
+	}
+	if len(result.MissingJSON) != 0 {
+		t.Fatalf("expected no missing json, got %v", result.MissingJSON)
+	}
+	if len(result.AmbiguousJSON) != 0 {
+		t.Fatalf("expected no ambiguous json, got %v", result.AmbiguousJSON)
+	}
+	if len(result.UnusedJSON) != 0 {
+		t.Fatalf("expected no unused json, got %v", result.UnusedJSON)
+	}
+}
+
 func TestScanTakeout_GlobalSameDirTieBreakPrefersLocalCandidate(t *testing.T) {
 	root := t.TempDir()
 	for _, dir := range []string{"A", "B"} {
