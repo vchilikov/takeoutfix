@@ -1,6 +1,8 @@
 package files
 
 import (
+	"crypto/sha256"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -71,6 +73,9 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	slices.Sort(allJSON)
 
 	usedJSON := make(map[string]struct{})
+	jsonAssignments := make(map[string][]string)
+	mediaFingerprintCache := make(map[string]mediaFingerprint)
+	mediaFingerprintErrs := make(map[string]error)
 	var unresolvedMedia []string
 
 	dirs := sortedDirs(mediaByDir)
@@ -96,8 +101,13 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 		}
 
 		localCandidateWinner := make(map[string]string)
+		localCandidateShared := make(map[string]struct{})
 		for jsonRel, claims := range localCandidateClaims {
 			if len(claims) <= 1 {
+				continue
+			}
+			if canShareJSONAcrossClaims(rootPath, jsonRel, claims, jsonAssignments, mediaFingerprintCache, mediaFingerprintErrs) {
+				localCandidateShared[jsonRel] = struct{}{}
 				continue
 			}
 			if winner, ok := uniqueClaimantByJSONTargetExtension(jsonRel, claims); ok {
@@ -113,36 +123,45 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 			}
 			claims := localCandidateClaims[jsonRel]
 			if len(claims) > 1 {
+				if _, ok := localCandidateShared[jsonRel]; ok {
+					result.Pairs[mediaRel] = jsonRel
+					usedJSON[jsonRel] = struct{}{}
+					jsonAssignments[jsonRel] = append(jsonAssignments[jsonRel], mediaRel)
+					continue
+				}
+
 				winner, ok := localCandidateWinner[jsonRel]
 				if !ok || winner != mediaRel {
 					unresolvedMedia = append(unresolvedMedia, mediaRel)
 					continue
 				}
 				if _, alreadyUsed := usedJSON[jsonRel]; alreadyUsed {
-					unresolvedMedia = append(unresolvedMedia, mediaRel)
-					continue
+					if !canShareJSONWithExistingAssignments(rootPath, mediaRel, jsonRel, jsonAssignments, mediaFingerprintCache, mediaFingerprintErrs) {
+						unresolvedMedia = append(unresolvedMedia, mediaRel)
+						continue
+					}
 				}
 
 				result.Pairs[mediaRel] = jsonRel
 				usedJSON[jsonRel] = struct{}{}
+				jsonAssignments[jsonRel] = append(jsonAssignments[jsonRel], mediaRel)
 				continue
 			}
 			if _, alreadyUsed := usedJSON[jsonRel]; alreadyUsed {
-				unresolvedMedia = append(unresolvedMedia, mediaRel)
-				continue
+				if !canShareJSONWithExistingAssignments(rootPath, mediaRel, jsonRel, jsonAssignments, mediaFingerprintCache, mediaFingerprintErrs) {
+					unresolvedMedia = append(unresolvedMedia, mediaRel)
+					continue
+				}
 			}
 
 			result.Pairs[mediaRel] = jsonRel
 			usedJSON[jsonRel] = struct{}{}
+			jsonAssignments[jsonRel] = append(jsonAssignments[jsonRel], mediaRel)
 		}
 	}
 
 	globalIndex := make(map[string][]string)
 	for _, jsonRel := range allJSON {
-		if _, ok := usedJSON[jsonRel]; ok {
-			continue
-		}
-
 		key := normalizeJSONKey(filepath.Base(jsonRel))
 		if key == "" {
 			continue
@@ -157,7 +176,7 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 
 	for _, mediaRel := range unresolvedMedia {
 		keys := mediaLookupKeys(filepath.Base(mediaRel))
-		candidates := collectGlobalCandidates(keys, globalIndex, usedJSON)
+		candidates := collectGlobalCandidates(keys, globalIndex)
 		candidates = applyGlobalCandidateRules(mediaRel, candidates)
 		globalCandidatesByMedia[mediaRel] = candidates
 
@@ -169,8 +188,13 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	}
 
 	globalCandidateWinner := make(map[string]string)
+	globalCandidateShared := make(map[string]struct{})
 	for candidate, claims := range globalCandidateClaims {
 		if len(claims) <= 1 {
+			continue
+		}
+		if canShareJSONAcrossClaims(rootPath, candidate, claims, jsonAssignments, mediaFingerprintCache, mediaFingerprintErrs) {
+			globalCandidateShared[candidate] = struct{}{}
 			continue
 		}
 		if winner, ok := uniqueClaimantByJSONTargetExtension(candidate, claims); ok {
@@ -189,6 +213,12 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 			result.MissingJSON = append(result.MissingJSON, mediaRel)
 		case 1:
 			candidate := candidates[0]
+			if _, ok := globalCandidateShared[candidate]; ok {
+				result.Pairs[mediaRel] = candidate
+				usedJSON[candidate] = struct{}{}
+				jsonAssignments[candidate] = append(jsonAssignments[candidate], mediaRel)
+				continue
+			}
 			if globalCandidateUsage[candidate] > 1 {
 				winner, ok := globalCandidateWinner[candidate]
 				if !ok || winner != mediaRel {
@@ -199,12 +229,15 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 			// Defensive guard: candidates are precomputed before assignment, so keep
 			// this check to avoid double-claiming if future rule changes reintroduce overlaps.
 			if _, alreadyUsed := usedJSON[candidate]; alreadyUsed {
-				result.AmbiguousJSON[mediaRel] = candidates
-				continue
+				if !canShareJSONWithExistingAssignments(rootPath, mediaRel, candidate, jsonAssignments, mediaFingerprintCache, mediaFingerprintErrs) {
+					result.AmbiguousJSON[mediaRel] = candidates
+					continue
+				}
 			}
 
 			result.Pairs[mediaRel] = candidate
 			usedJSON[candidate] = struct{}{}
+			jsonAssignments[candidate] = append(jsonAssignments[candidate], mediaRel)
 		default:
 			result.AmbiguousJSON[mediaRel] = candidates
 		}
@@ -222,14 +255,11 @@ func ScanTakeout(rootPath string) (MediaScanResult, error) {
 	return result, nil
 }
 
-func collectGlobalCandidates(keys []string, globalIndex map[string][]string, usedJSON map[string]struct{}) []string {
+func collectGlobalCandidates(keys []string, globalIndex map[string][]string) []string {
 	unique := make(map[string]struct{})
 
 	for _, key := range keys {
 		for _, jsonRel := range globalIndex[key] {
-			if _, used := usedJSON[jsonRel]; used {
-				continue
-			}
 			unique[jsonRel] = struct{}{}
 		}
 	}
@@ -238,17 +268,11 @@ func collectGlobalCandidates(keys []string, globalIndex map[string][]string, use
 }
 
 func applyGlobalCandidateRules(mediaRel string, candidates []string) []string {
-	if len(candidates) <= 1 {
-		return candidates
-	}
-
 	filteredByIndex := filterCandidatesByDuplicateIndex(mediaRel, candidates)
-	if len(filteredByIndex) == 1 {
+	if len(filteredByIndex) <= 1 {
 		return filteredByIndex
 	}
-	if len(filteredByIndex) > 1 {
-		candidates = filteredByIndex
-	}
+	candidates = filteredByIndex
 
 	sameDir := filterCandidatesBySameDir(mediaRel, candidates)
 	if len(sameDir) == 1 {
@@ -316,6 +340,7 @@ func jsonTargetExtension(jsonRel string) string {
 	}
 
 	name = strings.TrimSuffix(name, ".json")
+	name = canonicalizeJSONStem(name)
 	name = trailingNumberSuffixRe.ReplaceAllString(name, "")
 	name = stripSupplementalSuffix(name)
 	ext := filepath.Ext(name)
@@ -323,6 +348,109 @@ func jsonTargetExtension(jsonRel string) string {
 		return ""
 	}
 	return ext
+}
+
+type mediaFingerprint struct {
+	size int64
+	hash [sha256.Size]byte
+}
+
+func canShareJSONAcrossClaims(
+	rootPath string,
+	jsonRel string,
+	claims []string,
+	jsonAssignments map[string][]string,
+	cache map[string]mediaFingerprint,
+	errCache map[string]error,
+) bool {
+	if len(claims) <= 1 {
+		return false
+	}
+	combined := make([]string, 0, len(jsonAssignments[jsonRel])+len(claims))
+	combined = append(combined, jsonAssignments[jsonRel]...)
+	combined = append(combined, claims...)
+	return areExactDuplicateMediaClaims(rootPath, combined, cache, errCache)
+}
+
+func canShareJSONWithExistingAssignments(
+	rootPath string,
+	mediaRel string,
+	jsonRel string,
+	jsonAssignments map[string][]string,
+	cache map[string]mediaFingerprint,
+	errCache map[string]error,
+) bool {
+	existing := jsonAssignments[jsonRel]
+	if len(existing) == 0 {
+		return false
+	}
+	combined := make([]string, 0, len(existing)+1)
+	combined = append(combined, existing...)
+	combined = append(combined, mediaRel)
+	return areExactDuplicateMediaClaims(rootPath, combined, cache, errCache)
+}
+
+func areExactDuplicateMediaClaims(
+	rootPath string,
+	claims []string,
+	cache map[string]mediaFingerprint,
+	errCache map[string]error,
+) bool {
+	if len(claims) <= 1 {
+		return true
+	}
+	first, err := mediaFingerprintForPath(rootPath, claims[0], cache, errCache)
+	if err != nil {
+		return false
+	}
+	for _, claim := range claims[1:] {
+		current, err := mediaFingerprintForPath(rootPath, claim, cache, errCache)
+		if err != nil {
+			return false
+		}
+		if current != first {
+			return false
+		}
+	}
+	return true
+}
+
+func mediaFingerprintForPath(
+	rootPath string,
+	mediaRel string,
+	cache map[string]mediaFingerprint,
+	errCache map[string]error,
+) (mediaFingerprint, error) {
+	if fp, ok := cache[mediaRel]; ok {
+		return fp, nil
+	}
+	if err, ok := errCache[mediaRel]; ok {
+		return mediaFingerprint{}, err
+	}
+
+	path := filepath.Join(rootPath, mediaRel)
+	file, err := os.Open(path)
+	if err != nil {
+		errCache[mediaRel] = err
+		return mediaFingerprint{}, err
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	hasher := sha256.New()
+	size, err := io.Copy(hasher, file)
+	if err != nil {
+		errCache[mediaRel] = err
+		return mediaFingerprint{}, err
+	}
+
+	sum := hasher.Sum(nil)
+	var fp mediaFingerprint
+	fp.size = size
+	copy(fp.hash[:], sum)
+	cache[mediaRel] = fp
+	return fp, nil
 }
 
 func mediaLookupKeys(mediaFile string) []string {
