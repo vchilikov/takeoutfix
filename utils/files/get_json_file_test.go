@@ -184,6 +184,38 @@ func TestGetJsonFile(t *testing.T) {
 			want: "IMG_20201010_194629_966.jpg.supplemental-metad(1).json",
 		},
 		{
+			name:      "duplicate index matches media stem supplemental metadata with explicit zero",
+			mediaFile: "20170530_170805(0).jpg",
+			jsonFiles: map[string]struct{}{
+				"20170530_170805(0).jpg.supplemental-metadata.json": {},
+			},
+			want: "20170530_170805(0).jpg.supplemental-metadata.json",
+		},
+		{
+			name:      "duplicate index matches media stem supplemental metadata for any n",
+			mediaFile: "IMG_1000(12).jpg",
+			jsonFiles: map[string]struct{}{
+				"IMG_1000(12).jpg.supplemental-metadata.json": {},
+			},
+			want: "IMG_1000(12).jpg.supplemental-metadata.json",
+		},
+		{
+			name:      "duplicate index media stem supplemental metadata works in basename fallback path",
+			mediaFile: "20170530_170805(0).png",
+			jsonFiles: map[string]struct{}{
+				"20170530_170805(0).jpg.supplemental-metadata.json": {},
+			},
+			want: "20170530_170805(0).jpg.supplemental-metadata.json",
+		},
+		{
+			name:      "duplicate index mismatch does not match media stem supplemental metadata",
+			mediaFile: "IMG_1000(2).jpg",
+			jsonFiles: map[string]struct{}{
+				"IMG_1000(3).jpg.supplemental-metadata.json": {},
+			},
+			wantErr: true,
+		},
+		{
 			name:      "explicit zero duplicate index does not match base supplemental metadata",
 			mediaFile: "20180905_180723(0).jpg",
 			jsonFiles: map[string]struct{}{

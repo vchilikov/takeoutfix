@@ -203,11 +203,18 @@ func extractMediaDuplicateIndexInfo(mediaFile string) (int, bool) {
 }
 
 func extractJSONDuplicateIndexInfo(jsonFile string) (int, bool) {
-	name := filepath.Base(jsonFile)
-	ext := filepath.Ext(name)
-	if strings.EqualFold(ext, ".json") {
-		name = strings.TrimSuffix(name, ext)
+	name := strings.ToLower(filepath.Base(jsonFile))
+	name = strings.TrimSuffix(name, ".json")
+
+	// Keep legacy sidecar style priority: ...supplemental-metadata(n).json
+	if index, ok := extractTrailingDuplicateIndexInfo(name); ok {
+		return index, true
 	}
+
+	// Support sidecars that encode duplicate index in media stem:
+	// name(n).ext.supplemental-metadata.json
+	name = stripSupplementalSuffix(name)
+	name = stripKnownMediaExtension(name)
 	return extractTrailingDuplicateIndexInfo(name)
 }
 
@@ -283,6 +290,7 @@ func normalizeNameKeyWithOptions(name string, stripRandomSuffix bool) string {
 	}
 	name = trailingNumberSuffixRe.ReplaceAllString(name, "")
 	name = stripKnownMediaExtension(name)
+	name = trailingNumberSuffixRe.ReplaceAllString(name, "")
 	return name
 }
 
